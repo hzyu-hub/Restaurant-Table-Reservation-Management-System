@@ -3,8 +3,12 @@
  *
  * Availability reads are plain queries. Writes use the FR4 concurrency guard:
  * 3 `tableSlots` rows per booking, protected by the unique `{tableId, slotStart}`
- * index. We never do "check then insert" — we insert and let the unique index
+ * index. We never do "check then insert" - we insert and let the unique index
  * arbitrate, then repair whatever the insert left behind.
+ *
+ * Slot rows are never touched directly here: every read and write of
+ * `tableSlots` goes through `lib/slots.ts`, which is the only module allowed to
+ * import the model (enforced by `tests/architecture.test.ts`).
  */
 import { randomBytes } from 'node:crypto';
 import mongoose from 'mongoose';
@@ -18,6 +22,11 @@ import {
   SERVICE_OPEN_MINUTES,
 } from '../config/booking.js';
 import { ApiError } from '../lib/http.js';
+import {
+  findOccupiedSlots,
+  releaseWindow,
+  reserveWindow,
+} from '../lib/slots.js';
 import type { ReservationInput } from '../lib/validation.js';
 import {
   addMinutes,
@@ -25,12 +34,12 @@ import {
   bookingSlotInstants,
   clockTimeToMinutes,
   occupancyProbeInstants,
+  todayInRestaurantTimezone,
   toIsoString,
   zonedWallClockToUtc,
 } from '../lib/time.js';
 import { Reservation } from '../models/Reservation.js';
 import { Table } from '../models/Table.js';
-import { TableSlot } from '../models/TableSlot.js';
 
 /** One bookable start time on a given day, as returned by the availability API. */
 export interface AvailabilitySlot {
@@ -45,6 +54,15 @@ export interface AvailabilityResult {
   date: string;
   partySize: number;
   timezone: string;
+  /**
+   * Today's date in the RESTAURANT's timezone, as `YYYY-MM-DD`.
+   *
+   * The client must default its date input from this, not from the browser
+   * clock: a customer in Hawaii sees a browser "today" that the restaurant
+   * already considers yesterday, and the first request would come back
+   * `400 DATE_IN_PAST`.
+   */
+  today: string;
   durationMinutes: number;
   slots: AvailabilitySlot[];
 }
@@ -72,30 +90,6 @@ function generateReference(): string {
     reference += REFERENCE_ALPHABET[bytes[index] % REFERENCE_ALPHABET.length];
   }
   return reference;
-}
-
-/** Tells a unique-index violation apart from any other write failure. */
-function isDuplicateKeyError(error: unknown): boolean {
-  if (typeof error !== 'object' || error === null) {
-    return false;
-  }
-  const candidate = error as { code?: unknown; writeErrors?: unknown };
-
-  if (candidate.code === 11000) {
-    return true;
-  }
-
-  if (Array.isArray(candidate.writeErrors)) {
-    return candidate.writeErrors.some((writeError: unknown) => {
-      if (typeof writeError !== 'object' || writeError === null) {
-        return false;
-      }
-      const { code } = writeError as { code?: unknown };
-      return code === 11000;
-    });
-  }
-
-  return false;
 }
 
 /** Resolves `{ date, time }` to the UTC booking window, or throws a 400. */
@@ -165,20 +159,16 @@ export async function getAvailability(
   // Every slot row that could block any booking of this day sits inside the
   // 11:00..21:30 probe grid.
   const occupiedByTable = new Map<string, Set<number>>();
-  if (candidateIds.length > 0) {
-    const occupiedRows = await TableSlot.find({
-      tableId: { $in: candidateIds },
-      slotStart: { $gte: probeInstants[0], $lte: probeInstants[probeInstants.length - 1] },
-    })
-      .select({ tableId: 1, slotStart: 1 })
-      .lean();
+  const occupiedRows = await findOccupiedSlots(
+    candidateIds,
+    probeInstants[0],
+    probeInstants[probeInstants.length - 1],
+  );
 
-    for (const row of occupiedRows) {
-      const key = String(row.tableId);
-      const instants = occupiedByTable.get(key) ?? new Set<number>();
-      instants.add(row.slotStart.getTime());
-      occupiedByTable.set(key, instants);
-    }
+  for (const row of occupiedRows) {
+    const instants = occupiedByTable.get(row.tableId) ?? new Set<number>();
+    instants.add(row.slotStart.getTime());
+    occupiedByTable.set(row.tableId, instants);
   }
 
   const now = Date.now();
@@ -216,6 +206,7 @@ export async function getAvailability(
     date,
     partySize,
     timezone: RESTAURANT_TIMEZONE,
+    today: todayInRestaurantTimezone(),
     durationMinutes: BOOKING_DURATION_MINUTES,
     slots,
   };
@@ -225,15 +216,16 @@ export async function getAvailability(
  * Creates a reservation, or throws:
  * - 400 `ApiError` for invalid input / past start / off-grid start
  * - 409 `NO_TABLE_AVAILABLE` when no table fits the party
- * - 409 `BOOKING_CONFLICT` when the requested window is already taken
+ * - 409 `BOOKING_CONFLICT` when every fitting table's window is already taken
+ * - 503 `CAPACITY_EXHAUSTED` when the attempt cap is hit before that
  *
  * Algorithm (FR4):
  * 1. Resolve the local wall clock request to a UTC window (400 on bad input).
  * 2. Pick candidate tables, smallest sufficient capacity first (best fit).
  * 3. Generate the reservation id up front so slot rows can be cleaned up.
- * 4. `insertMany` the 3 slot rows with `{ ordered: false }` — the unique
- *    `{tableId, slotStart}` index rejects the losing racer. On a duplicate key
- *    we delete this attempt's partial rows and fall through to the next table.
+ * 4. `reserveWindow` inserts the 3 slot rows with `{ ordered: false }` - the
+ *    unique `{tableId, slotStart}` index rejects the losing racer. On a
+ *    duplicate key the partial rows are deleted and we try the next table.
  * 5. Only once the slots are secured is the Reservation document written. If
  *    that write fails, the slot rows are removed again so no table is left
  *    falsely blocked.
@@ -269,31 +261,23 @@ export async function createReservation(
 
   const reservationId = new mongoose.Types.ObjectId();
   let attempts = 0;
+  let hitAttemptCap = false;
 
   for (const table of candidates) {
     if (attempts >= MAX_CANDIDATE_ATTEMPTS) {
+      // The cap, not the candidate list, is what stopped us.
+      hitAttemptCap = true;
       break;
     }
     attempts += 1;
 
-    const slotRows = slotInstants.map((slotStart) => ({
+    const reserved = await reserveWindow({
       tableId: table._id,
-      slotStart,
       reservationId,
-    }));
+      slotStarts: slotInstants,
+    });
 
-    try {
-      // `ordered: false` keeps going after the first duplicate, so a rejected
-      // attempt may already own some of the 3 rows. The cleanup below is
-      // mandatory, not defensive.
-      await TableSlot.insertMany(slotRows, { ordered: false });
-    } catch (error) {
-      if (!isDuplicateKeyError(error)) {
-        await TableSlot.deleteMany({ reservationId });
-        throw error;
-      }
-
-      await TableSlot.deleteMany({ reservationId });
+    if (!reserved.reserved) {
       continue;
     }
 
@@ -322,9 +306,21 @@ export async function createReservation(
       };
     } catch (error) {
       // Slots are already secured but the reservation failed: release them.
-      await TableSlot.deleteMany({ reservationId });
+      await releaseWindow(reservationId);
       throw error;
     }
+  }
+
+  // Running out of attempts is an internal condition, not "somebody just took
+  // that slot": reporting it as a 409 BOOKING_CONFLICT would tell the customer
+  // to try another time when the real cause is that the candidate cap is too
+  // low for the table count. Unreachable with six tables and a cap of 25.
+  if (hitAttemptCap) {
+    throw new ApiError(
+      503,
+      'CAPACITY_EXHAUSTED',
+      'We could not seat this booking right now. Please call the restaurant.',
+    );
   }
 
   throw ApiError.conflict(

@@ -90,5 +90,54 @@ export type ReservationStatus = (typeof RESERVATION_STATUSES)[number];
  * Only these statuses hold table capacity. A slot row exists in `tableSlots`
  * if and only if the owning reservation is in a blocking status, so cancelling
  * (or completing) a reservation must delete its slot rows.
+ *
+ * This is the single source of truth for "does this status hold a table".
+ * Never re-enumerate the blocking statuses anywhere else; call
+ * `holdsCapacity()` instead.
  */
 export const BLOCKING_STATUSES: readonly ReservationStatus[] = ['CONFIRMED', 'SEATED'];
+
+/**
+ * The legal status transitions (US4: "invalid transitions are rejected").
+ *
+ * Data, not code: Sprint 3's `PATCH /api/staff/reservations/:id/status` handler
+ * validates against this table rather than re-deriving the rules, so the
+ * endpoint and the tests cannot drift apart.
+ *
+ * Rules:
+ * - CONFIRMED is the only status a new booking starts in.
+ * - CONFIRMED may be seated, cancelled, or marked no-show.
+ * - SEATED may only be completed (a seated party cannot be "cancelled").
+ * - COMPLETED, CANCELLED and NO_SHOW are terminal: no transition leaves them.
+ *
+ * Every edge out of a blocking status lands in a non-blocking status, which is
+ * what makes "release the slot rows on transition" correct. A test asserts that
+ * property over the whole matrix.
+ */
+export const ALLOWED_TRANSITIONS: Readonly<
+  Record<ReservationStatus, readonly ReservationStatus[]>
+> = {
+  CONFIRMED: ['SEATED', 'CANCELLED', 'NO_SHOW'],
+  SEATED: ['COMPLETED'],
+  COMPLETED: [],
+  CANCELLED: [],
+  NO_SHOW: [],
+};
+
+/** True when `to` is a legal next status for `from`. */
+export function isTransitionAllowed(
+  from: ReservationStatus,
+  to: ReservationStatus,
+): boolean {
+  return ALLOWED_TRANSITIONS[from].includes(to);
+}
+
+/**
+ * True when a reservation in `status` occupies its table.
+ *
+ * Reads `BLOCKING_STATUSES` rather than re-listing statuses, so adding or
+ * removing a blocking status is a one-line change in one place.
+ */
+export function holdsCapacity(status: ReservationStatus): boolean {
+  return BLOCKING_STATUSES.includes(status);
+}

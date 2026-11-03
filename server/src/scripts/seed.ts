@@ -6,6 +6,7 @@
  *   MONGODB_URI="mongodb+srv://..." npm run seed
  */
 import 'dotenv/config';
+import { randomBytes } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { connectToDatabase, disconnectFromDatabase } from '../db.js';
 import { StaffUser } from '../models/StaffUser.js';
@@ -21,8 +22,33 @@ const SEED_TABLES: readonly { label: string; capacity: number }[] = [
 ];
 
 const SEED_STAFF_USERNAME = 'staff';
-const SEED_STAFF_PASSWORD = 'Staff123!';
 const BCRYPT_ROUNDS = 10;
+
+/** Length of the generated password, in bytes of entropy before base64. */
+const GENERATED_PASSWORD_BYTES = 18;
+
+/**
+ * Resolves the staff password.
+ *
+ * There is no password literal in this file: a committed credential ships with
+ * every deployment and cannot be rotated without a code change. Precedence:
+ *
+ * 1. `SEED_STAFF_PASSWORD` from the environment, when set.
+ * 2. Otherwise a random password, printed ONCE with a warning.
+ *
+ * Returns the password plus whether it was generated, so the caller knows
+ * whether it is safe to echo it.
+ */
+function resolveStaffPassword(): { password: string; generated: boolean } {
+  const fromEnv = process.env.SEED_STAFF_PASSWORD?.trim();
+  if (fromEnv !== undefined && fromEnv.length > 0) {
+    return { password: fromEnv, generated: false };
+  }
+
+  // base64url keeps it copy-pasteable without shell quoting surprises.
+  const password = randomBytes(GENERATED_PASSWORD_BYTES).toString('base64url');
+  return { password, generated: true };
+}
 
 async function seed(): Promise<void> {
   const uri = process.env.MONGODB_URI?.trim();
@@ -51,7 +77,8 @@ async function seed(): Promise<void> {
   const tableCount = await Table.countDocuments();
   console.log(`[seed] tables ready: ${SEED_TABLES.length} upserted, ${tableCount} total`);
 
-  const passwordHash = await bcrypt.hash(SEED_STAFF_PASSWORD, BCRYPT_ROUNDS);
+  const { password, generated } = resolveStaffPassword();
+  const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
   await StaffUser.updateOne(
     { username: SEED_STAFF_USERNAME },
     {
@@ -64,6 +91,19 @@ async function seed(): Promise<void> {
   console.log(
     `[seed] staff user "${SEED_STAFF_USERNAME}" ready (${staffCount} total)`,
   );
+
+  if (generated) {
+    console.log('');
+    console.log('[seed] SEED_STAFF_PASSWORD was not set, so a random one was generated.');
+    console.log('[seed] Copy it now: THIS IS THE ONLY TIME IT WILL BE SHOWN.');
+    console.log(`[seed]   username: ${SEED_STAFF_USERNAME}`);
+    console.log(`[seed]   password: ${password}`);
+    console.log(
+      '[seed] Re-running the seed replaces the stored hash. Set SEED_STAFF_PASSWORD ' +
+        'to keep a known value.',
+    );
+    console.log('');
+  }
 }
 
 seed()

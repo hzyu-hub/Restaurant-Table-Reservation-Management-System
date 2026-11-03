@@ -30,6 +30,24 @@ export class ApiError extends Error {
   }
 }
 
+/** Shape of every error payload the API emits. */
+export interface ErrorPayload {
+  error: {
+    code: string;
+    message: string;
+  };
+}
+
+/**
+ * Builds the one error envelope the API uses everywhere.
+ *
+ * Lives here rather than in `app.ts` so non-route middleware (the rate limiter)
+ * can emit the same shape without importing the app module.
+ */
+export function errorPayload(code: string, message: string): ErrorPayload {
+  return { error: { code, message } };
+}
+
 /** True when the value is a well-formed `ApiError`. */
 export function isApiError(value: unknown): value is ApiError {
   return value instanceof ApiError;

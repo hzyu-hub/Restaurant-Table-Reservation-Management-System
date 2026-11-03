@@ -3,6 +3,7 @@ import {
   ApiRequestError,
   createReservation,
   fetchAvailability,
+  fetchServerClock,
   type AvailabilitySlot,
   type ReservationResponse,
 } from './api.ts';
@@ -10,14 +11,6 @@ import BookingForm, { type CustomerFormValues } from './components/BookingForm.t
 import Confirmation from './components/Confirmation.tsx';
 import ErrorBanner from './components/ErrorBanner.tsx';
 import SlotPicker from './components/SlotPicker.tsx';
-
-/** Local `YYYY-MM-DD` for the browser's clock (used only as a date default). */
-function todayLocalIso(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${String(now.getFullYear())}-${month}-${day}`;
-}
 
 /** Formats a start time in the restaurant's timezone for the summary line. */
 function formatSlotLabel(isoInstant: string, timeZone: string): string {
@@ -66,7 +59,23 @@ const PARTY_SIZES = [1, 2, 3, 4, 5, 6, 7, 8] as const;
 const FALLBACK_TIMEZONE = 'America/Toronto';
 
 export default function App() {
-  const [date, setDate] = useState<string>(todayLocalIso);
+  /**
+   * The default booking date and the input's `min` both come from the SERVER,
+   * never from the browser clock.
+   *
+   * `null` until the bootstrap call returns, because guessing from
+   * `new Date()` is exactly the bug: a customer in Hawaii at 8pm has a browser
+   * date the restaurant already considers yesterday, so the first availability
+   * request comes back `400 DATE_IN_PAST` before they touch anything.
+   *
+   * Bootstrap choice: `GET /api/health` is the cheapest call that always
+   * succeeds and needs no parameters, so it carries `today` (and the timezone)
+   * rather than the client firing a speculative availability request with a
+   * guessed date and then correcting itself. One extra request on first load,
+   * no wasted availability query, and no wrong-date error to swallow.
+   */
+  const [today, setToday] = useState<string | null>(null);
+  const [date, setDate] = useState<string | null>(null);
   const [partySize, setPartySize] = useState<number>(2);
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
   const [timeZone, setTimeZone] = useState<string>(FALLBACK_TIMEZONE);
@@ -92,6 +101,9 @@ export default function App() {
         setSlots(result.slots);
         setTimeZone(result.timezone);
         setDurationMinutes(result.durationMinutes);
+        // Keep the `min` attribute honest across a midnight rollover while the
+        // page stays open.
+        setToday(result.today);
         setSelectedSlot((current) => {
           if (current === null) {
             return null;
@@ -112,7 +124,37 @@ export default function App() {
     [],
   );
 
+  // Bootstrap: learn the restaurant's today before asking for availability, so
+  // the very first request cannot be for a date the server considers past.
   useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const clock = await fetchServerClock();
+        if (cancelled) {
+          return;
+        }
+        setToday(clock.today);
+        setTimeZone(clock.timezone);
+        setDate((current) => current ?? clock.today);
+      } catch (error: unknown) {
+        if (cancelled) {
+          return;
+        }
+        setBanner(toBanner(error));
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (date === null) {
+      return;
+    }
     setBanner(null);
     setSelectedSlot(null);
     void loadAvailability(date, partySize);
@@ -126,7 +168,7 @@ export default function App() {
   }, [selectedSlot, timeZone]);
 
   const handleSubmit = async (values: CustomerFormValues): Promise<void> => {
-    if (selectedSlot === null) {
+    if (selectedSlot === null || date === null) {
       return;
     }
 
@@ -157,7 +199,9 @@ export default function App() {
   const handleBookAnother = (): void => {
     setReservation(null);
     setSelectedSlot(null);
-    void loadAvailability(date, partySize);
+    if (date !== null) {
+      void loadAvailability(date, partySize);
+    }
   };
 
   if (reservation !== null) {
@@ -202,8 +246,11 @@ export default function App() {
             <input
               type="date"
               name="date"
-              value={date}
-              min={todayLocalIso()}
+              value={date ?? ''}
+              // Same server-provided value as the default, so the picker can
+              // never offer a date the API would reject.
+              min={today ?? undefined}
+              disabled={date === null}
               onChange={(event) => {
                 setDate(event.target.value);
                 setSelectedSlot(null);
@@ -232,7 +279,7 @@ export default function App() {
 
         <section className="availability">
           <h2>Pick a time</h2>
-          {loading ? (
+          {loading || date === null ? (
             <p className="slots-empty" role="status">
               Loading available times…
             </p>

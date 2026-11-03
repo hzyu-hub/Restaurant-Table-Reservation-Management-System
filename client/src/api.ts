@@ -14,8 +14,23 @@ export interface AvailabilityResponse {
   date: string;
   partySize: number;
   timezone: string;
+  /** Today in the RESTAURANT's timezone (`YYYY-MM-DD`), not the browser's. */
+  today: string;
   durationMinutes: number;
   slots: AvailabilitySlot[];
+}
+
+/**
+ * The bootstrap payload from `GET /api/health`.
+ *
+ * The server's idea of "today" has to reach the client before the first
+ * availability request, or a customer west of the restaurant gets
+ * `400 DATE_IN_PAST` on page load. Health is the cheapest call that always
+ * succeeds, so it carries the date default.
+ */
+export interface ServerClock {
+  today: string;
+  timezone: string;
 }
 
 export interface ReservationRequest {
@@ -95,8 +110,19 @@ function parseAvailability(value: unknown): AvailabilityResponse {
     date: readString(value, 'date'),
     partySize: readNumber(value, 'partySize'),
     timezone: readString(value, 'timezone'),
+    today: readString(value, 'today'),
     durationMinutes: readNumber(value, 'durationMinutes'),
     slots: rawSlots.map(parseAvailabilitySlot),
+  };
+}
+
+function parseServerClock(value: unknown): ServerClock {
+  if (!isRecord(value)) {
+    throw new Error('Malformed API response: health is not an object.');
+  }
+  return {
+    today: readString(value, 'today'),
+    timezone: readString(value, 'timezone'),
   };
 }
 
@@ -163,6 +189,12 @@ async function requestJson(path: string, init?: RequestInit): Promise<unknown> {
   }
 
   return (await response.json()) as unknown;
+}
+
+/** `GET /api/health`, used only to learn the restaurant's current date. */
+export async function fetchServerClock(): Promise<ServerClock> {
+  const payload = await requestJson('/api/health');
+  return parseServerClock(payload);
 }
 
 /** `GET /api/availability` for a local date and party size. */
