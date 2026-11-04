@@ -1,2 +1,32 @@
-.alma-snapshots
+# macOS metadata
 .DS_Store
+
+# Alma snapshots
+.alma-snapshots
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment files (keep the checked-in templates)
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test / tooling caches
+coverage/
+.vitest/
+.vite/
+
+# Editor / OS
+.vscode/
+.idea/

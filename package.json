@@ -1,0 +1,25 @@
+{
+  "name": "restaurant-table-reservation-management-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MERN restaurant table reservation management system (SDLC Team 5) - Sprint 1 vertical slice",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently --names server,client --prefix-colors blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "npm run dev --workspace server",
+    "dev:client": "npm run dev --workspace client",
+    "test": "npm run test --workspace server",
+    "seed": "npm run seed --workspace server",
+    "build": "npm run build --workspace client",
+    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
