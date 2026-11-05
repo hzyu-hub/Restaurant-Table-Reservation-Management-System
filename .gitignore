@@ -30,3 +30,6 @@ coverage/
 # Editor / OS
 .vscode/
 .idea/
+
+# Microsoft Office lock files
+~$*
