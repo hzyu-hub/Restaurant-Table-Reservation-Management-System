@@ -12,7 +12,13 @@ booking flow, backed by a concurrency-safe reservation engine.
   slots) and is assigned the smallest table that fits the party.
 - Double-booking is prevented **in the database**, not in application code, so
   it holds even with several API processes running.
-- A single-page React client for the whole flow.
+- Startup **refuses to boot** if that unique index is missing or non-unique, so
+  the system cannot silently begin double booking after a bad migration or a
+  database restore.
+- Orphaned slot rows from a crashed request are swept at startup, with a grace
+  period so in-flight bookings are never touched.
+- A single-page React client for the whole flow, with a booking reference and
+  an on-screen confirmation.
 
 Staff tooling (authentication, seating, cancellations) is Sprint 3 and is not
 part of this slice.
@@ -85,10 +91,23 @@ Runs the server test suite with Vitest against `mongodb-memory-server` — a rea
 MongoDB instance, with real unique indexes, no mocking. The first run downloads
 a MongoDB binary and may take a minute; later runs are fast.
 
-The suite covers the public API contract and, most importantly,
-`server/tests/concurrency.test.ts`: five simultaneous bookings for the same
-table and window must produce exactly one `201`, four `409`s, and exactly three
-slot rows. Removing the unique index makes that test fail.
+The suite is **60 tests across 11 files**. It covers the public API contract and,
+most importantly, the correctness properties:
+
+| File | Guards |
+| --- | --- |
+| `concurrency.test.ts` | Five simultaneous bookings for the same table and window produce exactly one `201`, four `409`s, and exactly three slot rows |
+| `index-guard.test.ts` | Startup aborts when the unique index is missing, non-unique, or shadowed by a name collision |
+| `invariant.test.ts` | Slot rows exist if and only if the owning reservation is in a blocking status |
+| `architecture.test.ts` | No file outside `lib/slots.ts` imports the slot model |
+| `reconciler.test.ts` | Orphaned slot rows older than the grace period are removed |
+| `error-handling.test.ts` | Malformed JSON returns 400, oversized bodies 413, and no customer PII reaches the log |
+| `status-transitions.test.ts` | All 25 status pairs match the transition matrix |
+| `rate-limit.test.ts` | `POST /api/reservations` is throttled; availability is not |
+| `performance.test.ts` | Availability latency against the PRD 2 second target |
+
+Removing the unique index makes `concurrency.test.ts` and `index-guard.test.ts`
+fail. That is the point: the guard is checked, not assumed.
 
 ## Build
 
@@ -96,6 +115,13 @@ slot rows. Removing the unique index makes that test fail.
 npm run build            # type-checks and bundles the client into client/dist
 npm run typecheck        # tsc --noEmit for both workspaces
 ```
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request to `main`, on Node 20
+and Node 22: `npm ci`, then `npm run typecheck`, then `npm test`, then the client
+build. The test suite needs no database service because it starts an ephemeral
+MongoDB itself.
 
 ## Booking rules
 
@@ -122,8 +148,12 @@ traces and database internals are never returned to a client.
 ### `GET /api/health`
 
 ```json
-{ "ok": true }
+{ "ok": true, "today": "2026-11-17" }
 ```
+
+`today` is the restaurant-local date. The client uses it to seed the date input
+instead of the browser clock, so a customer in another timezone does not get a
+`400 DATE_IN_PAST` on first page load.
 
 ### `GET /api/availability?date=YYYY-MM-DD&partySize=N`
 
@@ -135,6 +165,7 @@ unavailable ones.
   "date": "2026-11-17",
   "partySize": 2,
   "timezone": "America/Toronto",
+  "today": "2026-11-17",
   "durationMinutes": 90,
   "slots": [
     {
@@ -176,12 +207,14 @@ unavailable ones.
 }
 ```
 
-`400` — `INVALID_BODY`, `INVALID_NAME`, `INVALID_PHONE`, `INVALID_EMAIL`,
-`INVALID_PARTY_SIZE`, `INVALID_DATE`, `INVALID_TIME`, `OUTSIDE_SERVICE_HOURS`,
-`RESERVATION_IN_PAST`.
-
-`409` — `NO_TABLE_AVAILABLE` (no table is big enough) or `BOOKING_CONFLICT`
-(that window was taken first).
+| Status | Codes | Meaning |
+| --- | --- | --- |
+| `400` | `INVALID_BODY`, `INVALID_NAME`, `INVALID_PHONE`, `INVALID_EMAIL`, `INVALID_PARTY_SIZE`, `INVALID_DATE`, `INVALID_TIME`, `OUTSIDE_SERVICE_HOURS`, `RESERVATION_IN_PAST`, `INVALID_JSON` | The request is malformed or the details are not bookable |
+| `409` | `NO_TABLE_AVAILABLE` | No table is big enough for the party |
+| `409` | `BOOKING_CONFLICT` | That window was taken first |
+| `413` | `PAYLOAD_TOO_LARGE` | Request body over 64 kb |
+| `429` | `RATE_LIMITED` | More than 10 booking attempts per minute from one address |
+| `503` | `CAPACITY_EXHAUSTED` | Internal candidate exhaustion; distinct from a real conflict |
 
 ## How double-booking is prevented
 
@@ -213,13 +246,13 @@ server/
     index.ts          entry point: connect to Mongo, start Express
     app.ts            Express app factory (mounted directly by tests)
     db.ts             Mongoose connection helpers
-    config/booking.ts service hours, duration, statuses, timezone
-    lib/              time (local<->UTC), validation, http errors
+    config/booking.ts service hours, duration, statuses, transitions, timezone
+    lib/              time (local<->UTC), validation, http errors, slots, rate-limit
     models/           Table, Reservation, StaffUser, TableSlot
-    services/booking.ts availability + the FR4 concurrency guard
+    services/booking.ts availability + booking orchestration
     routes/           availability, reservations
     scripts/seed.ts   idempotent table + staff seeding
-  tests/              availability, booking, concurrency
+  tests/              11 files, 60 tests (see Test section)
 client/
   src/                single-page React app (api.ts, App.tsx, components/)
 ```
