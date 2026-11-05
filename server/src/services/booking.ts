@@ -213,6 +213,40 @@ export async function getAvailability(
 }
 
 /**
+ * Builds the message for `NO_TABLE_AVAILABLE`.
+ *
+ * The customer needs to know which of two situations they hit:
+ *
+ * 1. The party is larger than anything the restaurant can seat. Telling them
+ *    "no table available" would imply another time might work, so the message
+ *    names the real maximum and tells them to phone instead.
+ * 2. The party fits some table, but none of the fitting tables exist right now
+ *    (all deactivated). Rare, and a phone call is still the right answer.
+ *
+ * The maximum is read from the table inventory rather than hardcoded, so adding
+ * a larger table never leaves this message lying.
+ */
+async function describeNoTableAvailable(partySize: number): Promise<string> {
+  const largest = await Table.findOne({ active: true })
+    .sort({ capacity: -1 })
+    .select({ capacity: 1 })
+    .lean();
+
+  if (largest === null) {
+    return 'Online booking is unavailable right now. Please call the restaurant.';
+  }
+
+  if (partySize > largest.capacity) {
+    return (
+      `Online booking seats up to ${largest.capacity} guests. ` +
+      'For a larger party, please call the restaurant.'
+    );
+  }
+
+  return 'No table can seat that party size. Please call the restaurant.';
+}
+
+/**
  * Creates a reservation, or throws:
  * - 400 `ApiError` for invalid input / past start / off-grid start
  * - 409 `NO_TABLE_AVAILABLE` when no table fits the party
@@ -255,7 +289,7 @@ export async function createReservation(
   if (candidates.length === 0) {
     throw ApiError.conflict(
       'NO_TABLE_AVAILABLE',
-      'No table can seat that party size. Please call the restaurant.',
+      await describeNoTableAvailable(input.partySize),
     );
   }
 

@@ -72,7 +72,8 @@ out of scope.
    marked unavailable.
 
 *Current documented behavior:* 20 start times daily, 11:00 to 20:30, in 30-minute
-increments; party size 1 to 20; America/Toronto timezone.
+increments; party size 1 to 20 accepted by validation, with the largest seatable party
+determined by the table inventory (currently 8); America/Toronto timezone.
 
 ### US-02: Make a Reservation
 
@@ -165,15 +166,26 @@ testing.
 | Service hours | 11:00 to 22:00 local |
 | Booking start times | 11:00 to 20:30 every 30 minutes |
 | Reservation duration | 90 minutes |
-| Party size | 1 to 20 |
+| Party size (input bound) | 1 to 20 |
+| Party size (largest seatable) | 8, derived from the seeded tables |
 | Seeded tables | Six tables: capacities 2, 2, 4, 4, 6, 8 |
 | Booking statuses | CONFIRMED, SEATED, COMPLETED, CANCELLED, NO_SHOW |
 | Capacity-blocking statuses | CONFIRMED, SEATED |
 
-> **Clarification needed:** A party size up to 20 is accepted by input validation, but
-> the seeded tables have a maximum individual capacity of 8. The team should confirm
-> whether parties larger than 8 should receive `NO_TABLE_AVAILABLE` or whether combining
-> tables is planned. Do not assume table combining is supported.
+> **Decided (2026-11-04):** Online booking supports parties of 1 to 8, matching the
+> seeded table inventory. The customer dropdown already offers only 1 to 8.
+>
+> Parties larger than the largest active table receive `409 NO_TABLE_AVAILABLE` with a
+> message naming the real maximum and directing the customer to phone the restaurant.
+> The maximum is read from the table inventory at request time, not hardcoded, so adding
+> a larger table updates the message automatically.
+>
+> `MAX_PARTY_SIZE = 20` is retained only as an input sanity bound. It stops absurd
+> payloads; it does not describe seating capacity. The two concepts are deliberately
+> separate and must not be merged.
+>
+> Table combining is out of scope for the MVP. A party of 9 or more is handled by
+> telephone, not by the web application.
 
 ## 6. Proposed Sprint Planning
 
@@ -192,7 +204,8 @@ testing.
 - [ ] Review this backlog with Tom and the QA team member.
 - [ ] Confirm that backlog stories match the current PRD and implemented code.
 - [ ] Confirm acceptance criteria for staff authentication, statuses, and cancellation.
-- [ ] Clarify party-size policy for parties larger than the largest seeded table.
+- [x] Clarify party-size policy for parties larger than the largest seeded table.
+      Decided 2026-11-04; see section 5.
 - [ ] Create GitHub Issues for agreed, outstanding stories; link each issue to its
       story ID.
 - [ ] Agree on sprint dates, task ownership, and weekly reporting expectations.

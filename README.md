@@ -133,12 +133,18 @@ MongoDB itself.
 | Slot increment | 30 minutes |
 | Bookable start times | 11:00, 11:30 … 20:30 (20 per day) |
 | Slots held per booking | 3 |
-| Party size range | 1 – 20 |
+| Party size, accepted range | 1 to 20 (input sanity bound) |
+| Party size, largest seatable | 8, from the seeded tables |
 | Statuses | `CONFIRMED`, `SEATED`, `COMPLETED`, `CANCELLED`, `NO_SHOW` |
 | Statuses that block capacity | `CONFIRMED`, `SEATED` |
 
 Past start times are rejected. There is no customer self-cancellation and no
 email/SMS confirmation in this milestone.
+
+A party larger than the largest active table gets `409 NO_TABLE_AVAILABLE` with a
+message naming the real maximum and directing the customer to phone the restaurant.
+The maximum is read from the table inventory at request time, so it never drifts from
+the seeded data. Table combining is out of scope.
 
 ## API
 

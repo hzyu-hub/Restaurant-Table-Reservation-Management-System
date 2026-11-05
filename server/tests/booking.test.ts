@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { RESTAURANT_TIMEZONE } from '../src/config/booking.js';
 import { bookingSlotInstants, bookableSlotIndex, clockTimeToMinutes } from '../src/lib/time.js';
+import { Table } from '../src/models/Table.js';
 import { TableSlot } from '../src/models/TableSlot.js';
 import { futureDateIso, pastDateIso, reservationBody, seedTables } from './helpers.js';
 
@@ -169,6 +170,36 @@ describe('POST /api/reservations', () => {
 
     expect(response.status).toBe(409);
     expect(response.body).toMatchObject({ error: { code: 'NO_TABLE_AVAILABLE' } });
+  });
+
+  it('names the real maximum and suggests phoning when the party is too large', async () => {
+    // The customer cannot tell "try another time" from "we cannot seat you at
+    // all" unless the message says which one happened. The maximum comes from
+    // the inventory, so it cannot drift from the seeded tables.
+    await seedTables([2, 4, 8]);
+
+    const response = await request(app)
+      .post('/api/reservations')
+      .send(reservationBody({ date: futureDateIso(), partySize: 12 }));
+
+    expect(response.status).toBe(409);
+    expect(response.body).toMatchObject({ error: { code: 'NO_TABLE_AVAILABLE' } });
+    const message = (response.body as { error: { message: string } }).error.message;
+    expect(message).toContain('up to 8 guests');
+    expect(message).toContain('call the restaurant');
+  });
+
+  it('does not claim a maximum when every table is deactivated', async () => {
+    await Table.updateMany({}, { $set: { active: false } });
+
+    const response = await request(app)
+      .post('/api/reservations')
+      .send(reservationBody({ date: futureDateIso(), partySize: 2 }));
+
+    expect(response.status).toBe(409);
+    const message = (response.body as { error: { message: string } }).error.message;
+    expect(message).toContain('unavailable right now');
+    expect(message).not.toMatch(/up to \d+ guests/);
   });
 
   it('assigns every one of the six seeded tables before reporting a conflict', async () => {
