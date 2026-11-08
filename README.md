@@ -1,8 +1,8 @@
 # Restaurant-Table-Reservation-Management-System
 
 MERN restaurant table reservation system (SDLC Team 5). This repository currently
-contains the **Sprint 1 vertical slice**: a customer-facing availability and
-booking flow, backed by a concurrency-safe reservation engine.
+contains the customer booking flow and the Sprint 3 staff tools: sign-in,
+a date-filtered dashboard, and reservation status changes.
 
 ## What works today
 
@@ -20,8 +20,9 @@ booking flow, backed by a concurrency-safe reservation engine.
 - A single-page React client for the whole flow, with a booking reference and
   an on-screen confirmation.
 
-Staff tooling (authentication, seating, cancellations) is Sprint 3 and is not
-part of this slice.
+Staff sign in from the Staff link on the booking page. The dashboard lists
+one date and can seat, complete, cancel, or mark a no-show. Cancelling,
+completing, or marking a no-show releases that table. Seating does not.
 
 ## Prerequisites
 
@@ -91,7 +92,7 @@ Runs the server test suite with Vitest against `mongodb-memory-server` — a rea
 MongoDB instance, with real unique indexes, no mocking. The first run downloads
 a MongoDB binary and may take a minute; later runs are fast.
 
-The suite is **60 tests across 11 files**. It covers the public API contract and,
+The suite is **77 tests across 13 files**. It covers the public API contract and,
 most importantly, the correctness properties:
 
 | File | Guards |
@@ -103,6 +104,8 @@ most importantly, the correctness properties:
 | `reconciler.test.ts` | Orphaned slot rows older than the grace period are removed |
 | `error-handling.test.ts` | Malformed JSON returns 400, oversized bodies 413, and no customer PII reaches the log |
 | `status-transitions.test.ts` | All 25 status pairs match the transition matrix |
+| `staff-auth.test.ts` | Login issues a bearer token, bad logins are indistinguishable, the staff list is one local date |
+| `staff-status.test.ts` | A legal status change is saved, an illegal one is rejected, and cancelling frees only that table |
 | `rate-limit.test.ts` | `POST /api/reservations` is throttled; availability is not |
 | `performance.test.ts` | Availability latency against the PRD 2 second target |
 
@@ -259,6 +262,29 @@ the next calendar day.
 `401 UNAUTHENTICATED` means the token is missing or invalid. `400 INVALID_DATE`
 means the date is not a real `YYYY-MM-DD` value.
 
+### `PATCH /api/staff/reservations/:reference/status`
+
+Requires a valid staff bearer token. Body:
+
+```json
+{ "status": "SEATED" }
+```
+
+`reference` is the public booking reference, not the database id. Allowed
+changes: `CONFIRMED` to `SEATED`, `CANCELLED`, or `NO_SHOW`; `SEATED` to
+`COMPLETED`. `COMPLETED`, `CANCELLED`, and `NO_SHOW` do not change again.
+Sending the status the reservation already has returns `200` and changes
+nothing.
+
+Leaving `CONFIRMED` or `SEATED` for a status that does not hold a table deletes
+that reservation's slot rows, so the table can be booked again. `SEATED` still
+holds the table.
+
+`200` returns the updated reservation, including contact details. `400
+INVALID_STATUS` means the status is not one of the five. `409
+INVALID_TRANSITION` means the matrix forbids the change and nothing was saved.
+`404 NOT_FOUND` means the reference does not exist.
+
 ## How double-booking is prevented
 
 The `tableSlots` collection stores one row per occupied 30-minute slot per
@@ -293,10 +319,10 @@ server/
     lib/              time, validation, auth, http errors, slots, rate-limit
     middleware/       staff bearer-token guard
     models/           Table, Reservation, StaffUser, TableSlot
-    services/         booking orchestration, read-only staff queries
+    services/         booking orchestration, staff list and status changes
     routes/           auth, availability, reservations, staff
     scripts/seed.ts   idempotent table + staff seeding
-  tests/              12 files, 70 tests (see Test section)
+  tests/              13 files, 77 tests (see Test section)
 client/
   src/                single-page React app (api.ts, App.tsx, components/)
 ```

@@ -4,13 +4,21 @@ import {
   createReservation,
   fetchAvailability,
   fetchServerClock,
+  fetchStaffReservations,
+  loginStaff,
+  updateReservationStatus,
   type AvailabilitySlot,
   type ReservationResponse,
+  type ReservationStatus,
+  type StaffReservation,
+  type StaffSession,
 } from './api.ts';
 import BookingForm, { type CustomerFormValues } from './components/BookingForm.tsx';
 import Confirmation from './components/Confirmation.tsx';
 import ErrorBanner from './components/ErrorBanner.tsx';
 import SlotPicker from './components/SlotPicker.tsx';
+import StaffDashboard from './components/StaffDashboard.tsx';
+import StaffLogin from './components/StaffLogin.tsx';
 
 /** Formats a start time in the restaurant's timezone for the summary line. */
 function formatSlotLabel(isoInstant: string, timeZone: string): string {
@@ -85,6 +93,13 @@ export default function App() {
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [banner, setBanner] = useState<BannerState | null>(null);
   const [reservation, setReservation] = useState<ReservationResponse | null>(null);
+  const [view, setView] = useState<'book' | 'staff'>('book');
+  const [session, setSession] = useState<StaffSession | null>(null);
+  const [signingIn, setSigningIn] = useState<boolean>(false);
+  const [staffDate, setStaffDate] = useState<string | null>(null);
+  const [staffReservations, setStaffReservations] = useState<StaffReservation[]>([]);
+  const [staffLoading, setStaffLoading] = useState<boolean>(false);
+  const [pendingReference, setPendingReference] = useState<string | null>(null);
 
   /**
    * Loads slots for a date/party size.
@@ -196,6 +211,73 @@ export default function App() {
     }
   };
 
+
+  const loadStaffReservations = useCallback(
+    async (token: string, targetDate: string): Promise<void> => {
+      setStaffLoading(true);
+      try {
+        const result = await fetchStaffReservations(token, targetDate);
+        setStaffReservations(result.reservations);
+        setTimeZone(result.timezone);
+      } catch (error: unknown) {
+        setStaffReservations([]);
+        setBanner(toBanner(error));
+        if (error instanceof ApiRequestError && error.status === 401) {
+          setSession(null);
+        }
+      } finally {
+        setStaffLoading(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (view !== 'staff' || session === null || staffDate === null) {
+      return;
+    }
+    void loadStaffReservations(session.token, staffDate);
+  }, [view, session, staffDate, loadStaffReservations]);
+
+  const handleStaffLogin = async (username: string, password: string): Promise<void> => {
+    setSigningIn(true);
+    setBanner(null);
+    try {
+      const nextSession = await loginStaff(username, password);
+      setSession(nextSession);
+      setStaffDate((current) => current ?? today);
+    } catch (error: unknown) {
+      setBanner(toBanner(error));
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
+  const handleSignOut = (): void => {
+    setSession(null);
+    setStaffReservations([]);
+    setBanner(null);
+  };
+
+  const handleStatusChange = async (
+    reference: string,
+    status: ReservationStatus,
+  ): Promise<void> => {
+    if (session === null || staffDate === null) {
+      return;
+    }
+    setPendingReference(reference);
+    setBanner(null);
+    try {
+      await updateReservationStatus(session.token, reference, status);
+      await loadStaffReservations(session.token, staffDate);
+    } catch (error: unknown) {
+      setBanner(toBanner(error));
+    } finally {
+      setPendingReference(null);
+    }
+  };
+
   const handleBookAnother = (): void => {
     setReservation(null);
     setSelectedSlot(null);
@@ -203,6 +285,72 @@ export default function App() {
       void loadAvailability(date, partySize);
     }
   };
+
+  if (view === 'staff') {
+    return (
+      <main className="page">
+        <div className="card card--wide">
+          <header className="page-header page-header--split">
+            <div>
+              <h1 className="brand">Staff</h1>
+              <p className="subtitle">Today's bookings, seating, and cancellations.</p>
+            </div>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => {
+                setView('book');
+                setBanner(null);
+              }}
+            >
+              Book a table
+            </button>
+          </header>
+
+          {banner !== null && (
+            <ErrorBanner
+              code={banner.code}
+              message={banner.message}
+              onDismiss={() => {
+                setBanner(null);
+              }}
+            />
+          )}
+
+          {session === null ? (
+            <StaffLogin
+              submitting={signingIn}
+              onSubmit={(username, password) => {
+                void handleStaffLogin(username, password);
+              }}
+            />
+          ) : staffDate === null ? (
+            <p className="slots-empty" role="status">
+              Loading the restaurant date…
+            </p>
+          ) : (
+            <StaffDashboard
+              date={staffDate}
+              minDate={null}
+              timeZone={timeZone}
+              reservations={staffReservations}
+              loading={staffLoading}
+              pendingReference={pendingReference}
+              username={session.staff.username}
+              onDateChange={(nextDate) => {
+                setBanner(null);
+                setStaffDate(nextDate);
+              }}
+              onStatusChange={(reference, status) => {
+                void handleStatusChange(reference, status);
+              }}
+              onSignOut={handleSignOut}
+            />
+          )}
+        </div>
+      </main>
+    );
+  }
 
   if (reservation !== null) {
     return (
@@ -222,12 +370,24 @@ export default function App() {
   return (
     <main className="page">
       <div className="card">
-        <header className="page-header">
-          <h1 className="brand">Table Reservations</h1>
-          <p className="subtitle">
-            Open daily 11:00&nbsp;AM – 10:00&nbsp;PM. Bookings last{' '}
-            {durationMinutes} minutes.
-          </p>
+        <header className="page-header page-header--split">
+          <div>
+            <h1 className="brand">Table Reservations</h1>
+            <p className="subtitle">
+              Open daily 11:00&nbsp;AM – 10:00&nbsp;PM. Bookings last{' '}
+              {durationMinutes} minutes.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              setView('staff');
+              setBanner(null);
+            }}
+          >
+            Staff
+          </button>
         </header>
 
         {banner !== null && (
