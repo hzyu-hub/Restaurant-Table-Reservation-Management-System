@@ -9,11 +9,13 @@ import express, {
 import { RESTAURANT_TIMEZONE } from './config/booking.js';
 import { ApiError, errorPayload, isApiError } from './lib/http.js';
 import { todayInRestaurantTimezone } from './lib/time.js';
+import { authRouter } from './routes/auth.js';
 import { availabilityRouter } from './routes/availability.js';
 import {
   createReservationsRouter,
   type ReservationsRouterOptions,
 } from './routes/reservations.js';
+import { staffRouter } from './routes/staff.js';
 
 /** Longest `message` we will put in a log line. */
 const MAX_LOGGED_MESSAGE_LENGTH = 200;
@@ -186,7 +188,9 @@ export function createApp(options: AppOptions = {}): Express {
     });
   });
 
+  app.use('/api/auth', authRouter);
   app.use('/api/availability', availabilityRouter);
+  app.use('/api/staff', staffRouter);
   app.use(
     '/api/reservations',
     createReservationsRouter({ rateLimit: options.reservationRateLimit }),

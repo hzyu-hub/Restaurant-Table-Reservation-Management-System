@@ -222,6 +222,43 @@ unavailable ones.
 | `429` | `RATE_LIMITED` | More than 10 booking attempts per minute from one address |
 | `503` | `CAPACITY_EXHAUSTED` | Internal candidate exhaustion; distinct from a real conflict |
 
+### `POST /api/auth/login`
+
+```json
+{
+  "username": "staff",
+  "password": "the seeded password"
+}
+```
+
+`200` returns a bearer token. Send it as `Authorization: Bearer <token>`.
+No cookie is set.
+
+```json
+{
+  "token": "<jwt>",
+  "tokenType": "Bearer",
+  "expiresInSeconds": 28800,
+  "staff": { "username": "staff", "role": "staff" }
+}
+```
+
+`400 INVALID_CREDENTIALS` means the body is incomplete. `401 INVALID_CREDENTIALS`
+means the username or password is wrong. Those two failures use the same code and
+message, so the response does not reveal which accounts exist. `JWT_SECRET` is
+required and must be at least 32 characters. Login returns
+`500 AUTH_NOT_CONFIGURED` when it is missing.
+
+### `GET /api/staff/reservations?date=YYYY-MM-DD`
+
+Requires a valid staff bearer token. Returns reservations whose start time falls
+on that restaurant-local date, ordered earliest first, including customer contact
+details. A 20:30 booking stays on its local date even when its UTC instant is on
+the next calendar day.
+
+`401 UNAUTHENTICATED` means the token is missing or invalid. `400 INVALID_DATE`
+means the date is not a real `YYYY-MM-DD` value.
+
 ## How double-booking is prevented
 
 The `tableSlots` collection stores one row per occupied 30-minute slot per
@@ -253,12 +290,13 @@ server/
     app.ts            Express app factory (mounted directly by tests)
     db.ts             Mongoose connection helpers
     config/booking.ts service hours, duration, statuses, transitions, timezone
-    lib/              time (local<->UTC), validation, http errors, slots, rate-limit
+    lib/              time, validation, auth, http errors, slots, rate-limit
+    middleware/       staff bearer-token guard
     models/           Table, Reservation, StaffUser, TableSlot
-    services/booking.ts availability + booking orchestration
-    routes/           availability, reservations
+    services/         booking orchestration, read-only staff queries
+    routes/           auth, availability, reservations, staff
     scripts/seed.ts   idempotent table + staff seeding
-  tests/              11 files, 60 tests (see Test section)
+  tests/              12 files, 70 tests (see Test section)
 client/
   src/                single-page React app (api.ts, App.tsx, components/)
 ```

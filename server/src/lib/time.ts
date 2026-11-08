@@ -112,3 +112,22 @@ export function toIsoString(instant: Date): string {
 export function addMinutes(instant: Date, minutes: number): Date {
   return new Date(instant.getTime() + minutes * 60_000);
 }
+
+/**
+ * UTC bounds for one restaurant-local calendar date: `[start, end)`.
+ *
+ * The end is the next local date at midnight. Passing `24:00` to the clock
+ * converter is invalid, and adding a fixed 24 hours is wrong on a DST boundary.
+ */
+export function restaurantLocalDayRange(dateIso: string): { start: Date; end: Date } {
+  const start = zonedWallClockToUtc(dateIso, 0);
+  const [yearText, monthText, dayText] = dateIso.split('-');
+  const nextLocalDate = new Date(
+    Date.UTC(Number(yearText), Number(monthText) - 1, Number(dayText) + 1),
+  );
+  const nextDateIso = nextLocalDate.toISOString().slice(0, 10);
+  return {
+    start,
+    end: zonedWallClockToUtc(nextDateIso, 0),
+  };
+}

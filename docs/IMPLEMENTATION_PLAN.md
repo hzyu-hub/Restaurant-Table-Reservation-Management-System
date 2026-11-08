@@ -226,8 +226,21 @@ object is never logged as a whole, because for a body-parser failure it carries 
 request body, which contains the customer's name, phone and email. The PRD Privacy
 requirement forbids that, and `tests/error-handling.test.ts` asserts it.
 
-### Not yet implemented (Sprint 3)
-`POST /api/auth/login`, `GET /api/staff/reservations`, `PATCH /api/staff/reservations/:id/status`.
+### Sprint 3a (implemented)
+`POST /api/auth/login` and `GET /api/staff/reservations?date=YYYY-MM-DD`.
+
+Login returns an HS256 bearer token for the `Authorization` header. It does not
+set a cookie. Unknown users and wrong passwords return the same
+`401 INVALID_CREDENTIALS` response, and an unknown user still takes the bcrypt
+comparison path. The staff list is read-only, includes customer contact details,
+and filters by restaurant-local date rather than a raw UTC day.
+
+`JWT_SECRET` is required and must contain at least 32 characters. There is no
+signing-secret fallback in source.
+
+### Not yet implemented (Sprint 3b)
+`PATCH /api/staff/reservations/:id/status`, the staff login page, and the
+date-filtered dashboard UI.
 
 ---
 
@@ -272,20 +285,20 @@ requirement forbids that, and `tests/error-handling.test.ts` asserts it.
 Split in two, because auth and slot mutation are independent risks that share no code.
 If 3b slips, 3a still gives a working staff view for the demo.
 
-**3a: authentication and read-only dashboard** (additive, low risk; delivers FR5, US3)
-- [ ] Auth mechanism decided: **token in `Authorization` header, not cookies.** A
+**3a: authentication and read-only API** (additive, low risk; delivers FR5 API)
+- [x] Auth mechanism decided: **token in `Authorization` header, not cookies.** A
       cookie would require `cors({ origin, credentials: true })` and CSRF handling;
       header auth works with the current `cors()` unchanged. Record this decision.
-- [ ] `jsonwebtoken` installed. Do NOT install `cookie-parser`.
-- [ ] `POST /api/auth/login`. Note `StaffUser.passwordHash` is `select: false`, so the
+- [x] `jsonwebtoken` installed. Do NOT install `cookie-parser`.
+- [x] `POST /api/auth/login`. Note `StaffUser.passwordHash` is `select: false`, so the
       query must explicitly `.select('+passwordHash')`.
-- [ ] Login hardening: identical error for unknown user and wrong password, and hash a
+- [x] Login hardening: identical error for unknown user and wrong password, and hash a
       dummy value when the user does not exist, so response timing cannot enumerate
       accounts. `bcrypt.compare` is not constant-time in the way that matters here.
-- [ ] `requireStaff` middleware
-- [ ] `GET /api/staff/reservations?date=YYYY-MM-DD`
+- [x] `requireStaff` middleware
+- [x] `GET /api/staff/reservations?date=YYYY-MM-DD`
 - [ ] Staff login page plus a date-filtered dashboard
-- [ ] Tests: unauthenticated access denied, valid login issues a token, wrong password
+- [x] Tests: unauthenticated access denied, valid login issues a token, wrong password
       and unknown user are indistinguishable
 
 **3b: status transitions** (mutating, high risk; delivers FR6, US4)
