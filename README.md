@@ -46,14 +46,20 @@ This installs both workspaces (`server` and `client`) from the repository root.
 cp server/.env.example server/.env
 ```
 
-Then set `MONGODB_URI` in `server/.env` to your connection string:
+Then set these values in `server/.env`:
 
 ```
 MONGODB_URI="mongodb+srv://<user>:<password>@<cluster>/<db>?retryWrites=true&w=majority"
 PORT=4000
+JWT_SECRET="<at least 32 random characters>"
+SEED_STAFF_PASSWORD="<password you can type at staff sign-in>"
 ```
 
 `PORT` defaults to `4000`. The Vite dev server proxies `/api` to it.
+
+`JWT_SECRET` is required and must be at least 32 characters. Staff sign-in returns
+`500 AUTH_NOT_CONFIGURED` when it is missing or shorter. `SEED_STAFF_PASSWORD` is
+the password for the seeded username `staff`.
 
 ## Seed the database
 
@@ -62,9 +68,13 @@ npm run seed
 ```
 
 Creates six tables (capacities 2, 2, 4, 4, 6, 8) and one staff account
-(`staff`). The script is idempotent — running it repeatedly leaves the same six
-tables and one staff user. It requires `MONGODB_URI`; without it the script
-prints setup instructions and exits non-zero instead of crashing.
+(`staff`). The password comes from `SEED_STAFF_PASSWORD`. If that variable is
+unset, the script generates a random password and prints it once. Running the
+seed again replaces the stored password hash.
+
+The script is idempotent for the six tables: running it repeatedly leaves the
+same six tables and one staff user. It requires `MONGODB_URI`. Without it, the
+script prints setup instructions and exits non-zero instead of crashing.
 
 ## Run in development
 
@@ -74,6 +84,8 @@ npm run dev
 
 - API: http://localhost:4000
 - Customer app: http://localhost:5173
+
+The five-minute presentation path is in [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
 
 Useful subsets:
 
