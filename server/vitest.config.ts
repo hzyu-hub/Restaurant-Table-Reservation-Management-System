@@ -17,7 +17,10 @@ export default defineConfig({
      * hook runs. `tests/rate-limit.test.ts` passes an explicit `rateLimit`
      * option, which overrides this switch, so the middleware is still covered.
      */
-    env: { DISABLE_RATE_LIMIT: '1' },
+    env: {
+      DISABLE_RATE_LIMIT: '1',
+      JWT_SECRET: 'restaurant-staff-development-secret',
+    },
     testTimeout: 30_000,
     hookTimeout: 180_000,
     teardownTimeout: 30_000,

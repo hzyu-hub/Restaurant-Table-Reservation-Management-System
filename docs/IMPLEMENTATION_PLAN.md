@@ -36,7 +36,7 @@ Verified against commit `0b7a504` (tag `v0.2.0`), not from memory.
 | PRD item | Sprint | Note |
 | --- | --- | --- |
 | FR5 staff view reservations | 3a | No auth exists yet |
-| FR6 update reservation status | 3b | Matrix defined, endpoint not built |
+| FR6 update reservation status | 3b | Endpoint and dashboard controls built |
 | Staff authentication | 3a | `StaffUser` model exists, nothing uses it |
 | Deployment | 4 | No hosting configured |
 | Mobile verification (PRD matrix row 7) | 4 | Responsive CSS exists, never verified on a device |
@@ -226,8 +226,37 @@ object is never logged as a whole, because for a body-parser failure it carries 
 request body, which contains the customer's name, phone and email. The PRD Privacy
 requirement forbids that, and `tests/error-handling.test.ts` asserts it.
 
-### Not yet implemented (Sprint 3)
-`POST /api/auth/login`, `GET /api/staff/reservations`, `PATCH /api/staff/reservations/:id/status`.
+### Sprint 3a (implemented)
+`POST /api/auth/login` and `GET /api/staff/reservations?date=YYYY-MM-DD`.
+
+Login returns an HS256 bearer token for the `Authorization` header. It does not
+set a cookie. Unknown users and wrong passwords return the same
+`401 INVALID_CREDENTIALS` response, and an unknown user still takes the bcrypt
+comparison path. The staff list is read-only, includes customer contact details,
+and filters by restaurant-local date rather than a raw UTC day.
+
+`JWT_SECRET` is required and must contain at least 32 characters. There is no
+signing-secret fallback in source.
+
+### Sprint 3b (implemented)
+`PATCH /api/staff/reservations/:reference/status`, the staff login page, and the
+date-filtered dashboard.
+
+The path uses the reservation reference, the same public id the list returns,
+not the Mongo `_id`. The body is `{ "status": "SEATED" }`. A status the system
+does not know is `400 INVALID_STATUS`. A status the matrix forbids is
+`409 INVALID_TRANSITION` and changes nothing. Sending the status the
+reservation already has succeeds again and changes nothing, so a retried
+cancel cannot fail after the first one landed.
+
+Slots are released through `releaseWindow` only when the reservation leaves
+`BLOCKING_STATUSES`. `CONFIRMED -> SEATED` keeps the table. `services/staff.ts`
+does not import `TableSlot`.
+
+The client adds a Staff entry on the booking page. Login posts to
+`/api/auth/login` and keeps the bearer token in memory only. The dashboard
+lists one restaurant-local date and offers only the transitions the matrix
+allows: Seat, Cancel, and No-show from `CONFIRMED`, Complete from `SEATED`.
 
 ---
 
@@ -272,30 +301,30 @@ requirement forbids that, and `tests/error-handling.test.ts` asserts it.
 Split in two, because auth and slot mutation are independent risks that share no code.
 If 3b slips, 3a still gives a working staff view for the demo.
 
-**3a: authentication and read-only dashboard** (additive, low risk; delivers FR5, US3)
-- [ ] Auth mechanism decided: **token in `Authorization` header, not cookies.** A
+**3a: authentication and read-only API** (additive, low risk; delivers FR5 API)
+- [x] Auth mechanism decided: **token in `Authorization` header, not cookies.** A
       cookie would require `cors({ origin, credentials: true })` and CSRF handling;
       header auth works with the current `cors()` unchanged. Record this decision.
-- [ ] `jsonwebtoken` installed. Do NOT install `cookie-parser`.
-- [ ] `POST /api/auth/login`. Note `StaffUser.passwordHash` is `select: false`, so the
+- [x] `jsonwebtoken` installed. Do NOT install `cookie-parser`.
+- [x] `POST /api/auth/login`. Note `StaffUser.passwordHash` is `select: false`, so the
       query must explicitly `.select('+passwordHash')`.
-- [ ] Login hardening: identical error for unknown user and wrong password, and hash a
+- [x] Login hardening: identical error for unknown user and wrong password, and hash a
       dummy value when the user does not exist, so response timing cannot enumerate
       accounts. `bcrypt.compare` is not constant-time in the way that matters here.
-- [ ] `requireStaff` middleware
-- [ ] `GET /api/staff/reservations?date=YYYY-MM-DD`
-- [ ] Staff login page plus a date-filtered dashboard
-- [ ] Tests: unauthenticated access denied, valid login issues a token, wrong password
+- [x] `requireStaff` middleware
+- [x] `GET /api/staff/reservations?date=YYYY-MM-DD`
+- [x] Staff login page plus a date-filtered dashboard
+- [x] Tests: unauthenticated access denied, valid login issues a token, wrong password
       and unknown user are indistinguishable
 
 **3b: status transitions** (mutating, high risk; delivers FR6, US4)
-- [ ] `PATCH /api/staff/reservations/:id/status`, validating against
+- [x] `PATCH /api/staff/reservations/:id/status`, validating against
       `ALLOWED_TRANSITIONS` in `config/booking.ts`
-- [ ] Release slot rows through `releaseWindow` in `lib/slots.ts` whenever the
+- [x] Release slot rows through `releaseWindow` in `lib/slots.ts` whenever the
       transition moves the reservation out of `BLOCKING_STATUSES`. Never call
       `TableSlot` directly; `tests/architecture.test.ts` will fail if you do.
-- [ ] Status controls in the dashboard
-- [ ] Tests: valid transition saved, invalid transition rejected, and the **invariant
+- [x] Status controls in the dashboard
+- [x] Tests: valid transition saved, invalid transition rejected, and the **invariant
       test** from `tests/invariant.test.ts` still passing after every transition
 
 The transition matrix is defined in section 4. `CONFIRMED -> SEATED` is the one
@@ -320,7 +349,7 @@ same evening.
 
 ## 7. Test strategy
 
-Current: 60 tests across 11 files, all against a real ephemeral MongoDB via
+Current: 77 tests across 13 files, all against a real ephemeral MongoDB via
 `mongodb-memory-server`. No mocking of the database, because the concurrency guard is
 a database feature and mocking it would test nothing.
 
@@ -335,15 +364,17 @@ a database feature and mocking it would test nothing.
 | `reconciler.test.ts` | 5 | Orphaned slot rows older than the grace period are removed; fresh ones and real bookings survive |
 | `error-handling.test.ts` | 6 | Malformed JSON returns 400 `INVALID_JSON`, oversized body 413, and no customer name, phone or email reaches the log |
 | `status-transitions.test.ts` | 11 | All 25 status pairs, plus the release-edge set |
+| `staff-auth.test.ts` | 9 | Login token, indistinguishable failures, staff list by local date |
+| `staff-status.test.ts` | 6 | Legal transition saved, illegal transition rejected, cancel releases only that table |
 | `rate-limit.test.ts` | 5 | POST throttled with 429 `RATE_LIMITED`; availability GET is not throttled |
 | `performance.test.ts` | 1 | Availability latency against 20 tables and 42 bookings, measured against the PRD 2 second target |
 
 The concurrency test is the load-bearing one. It was validated with a negative control: dropping the unique index makes all five requests succeed, confirming the test measures the index rather than incidental serialization.
 
-Planned additions in Sprint 3:
-- Unauthenticated staff request returns 401
-- Cancelling a reservation frees its slots for rebooking
-- Invalid status transition rejected
+Sprint 3 additions, now covered:
+- Unauthenticated staff request returns 401 (`staff-auth.test.ts`, `staff-status.test.ts`)
+- Cancelling a reservation frees its slots for rebooking (`staff-status.test.ts`)
+- Invalid status transition rejected (`staff-status.test.ts`)
 
 ---
 

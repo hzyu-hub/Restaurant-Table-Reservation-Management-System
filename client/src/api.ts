@@ -221,3 +221,165 @@ export async function createReservation(
   });
   return parseReservation(payload);
 }
+
+export type ReservationStatus =
+  | 'CONFIRMED'
+  | 'SEATED'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'NO_SHOW';
+
+export interface StaffSession {
+  token: string;
+  tokenType: 'Bearer';
+  expiresInSeconds: number;
+  staff: {
+    username: string;
+    role: 'staff' | 'admin';
+  };
+}
+
+export interface StaffReservation {
+  reference: string;
+  customerName: string;
+  customerEmail: string | null;
+  customerPhone: string;
+  partySize: number;
+  table: {
+    label: string;
+    capacity: number;
+  };
+  startTime: string;
+  endTime: string;
+  status: ReservationStatus;
+}
+
+export interface StaffReservationList {
+  date: string;
+  timezone: string;
+  reservations: StaffReservation[];
+}
+
+const STATUSES: readonly ReservationStatus[] = [
+  'CONFIRMED',
+  'SEATED',
+  'COMPLETED',
+  'CANCELLED',
+  'NO_SHOW',
+];
+
+function isReservationStatus(value: string): value is ReservationStatus {
+  return (STATUSES as readonly string[]).includes(value);
+}
+
+function parseStaffSession(value: unknown): StaffSession {
+  if (!isRecord(value) || !isRecord(value.staff)) {
+    throw new Error('Malformed API response: login is not a session.');
+  }
+  const role = value.staff.role;
+  if (role !== 'staff' && role !== 'admin') {
+    throw new Error('Malformed API response: staff role is not recognized.');
+  }
+  const tokenType = value.tokenType;
+  if (tokenType !== 'Bearer') {
+    throw new Error('Malformed API response: token type is not Bearer.');
+  }
+  return {
+    token: readString(value, 'token'),
+    tokenType,
+    expiresInSeconds: readNumber(value, 'expiresInSeconds'),
+    staff: {
+      username: readString(value.staff, 'username'),
+      role,
+    },
+  };
+}
+
+function parseStaffReservation(value: unknown): StaffReservation {
+  if (!isRecord(value)) {
+    throw new Error('Malformed API response: reservation is not an object.');
+  }
+  const rawTable = value.table;
+  if (!isRecord(rawTable)) {
+    throw new Error('Malformed API response: "table" is not an object.');
+  }
+  const status = readString(value, 'status');
+  if (!isReservationStatus(status)) {
+    throw new Error('Malformed API response: status is not recognized.');
+  }
+  const email = value.customerEmail;
+  return {
+    reference: readString(value, 'reference'),
+    customerName: readString(value, 'customerName'),
+    customerEmail: typeof email === 'string' ? email : null,
+    customerPhone: readString(value, 'customerPhone'),
+    partySize: readNumber(value, 'partySize'),
+    table: {
+      label: readString(rawTable, 'label'),
+      capacity: readNumber(rawTable, 'capacity'),
+    },
+    startTime: readString(value, 'startTime'),
+    endTime: readString(value, 'endTime'),
+    status,
+  };
+}
+
+function parseStaffList(value: unknown): StaffReservationList {
+  if (!isRecord(value)) {
+    throw new Error('Malformed API response: staff list is not an object.');
+  }
+  const rawReservations = value.reservations;
+  if (!Array.isArray(rawReservations)) {
+    throw new Error('Malformed API response: "reservations" is not an array.');
+  }
+  return {
+    date: readString(value, 'date'),
+    timezone: readString(value, 'timezone'),
+    reservations: rawReservations.map(parseStaffReservation),
+  };
+}
+
+/** `POST /api/auth/login`. The token stays in memory; nothing is written to storage. */
+export async function loginStaff(
+  username: string,
+  password: string,
+): Promise<StaffSession> {
+  const payload = await requestJson('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  return parseStaffSession(payload);
+}
+
+/** `GET /api/staff/reservations?date=YYYY-MM-DD`. */
+export async function fetchStaffReservations(
+  token: string,
+  date: string,
+): Promise<StaffReservationList> {
+  const query = new URLSearchParams({ date });
+  const payload = await requestJson(`/api/staff/reservations?${query.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return parseStaffList(payload);
+}
+
+/** `PATCH /api/staff/reservations/:reference/status`. */
+export async function updateReservationStatus(
+  token: string,
+  reference: string,
+  status: ReservationStatus,
+): Promise<StaffReservation> {
+  const payload = await requestJson(
+    `/api/staff/reservations/${encodeURIComponent(reference)}/status`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ status }),
+    },
+  );
+  return parseStaffReservation(payload);
+}

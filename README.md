@@ -1,8 +1,8 @@
 # Restaurant-Table-Reservation-Management-System
 
 MERN restaurant table reservation system (SDLC Team 5). This repository currently
-contains the **Sprint 1 vertical slice**: a customer-facing availability and
-booking flow, backed by a concurrency-safe reservation engine.
+contains the customer booking flow and the Sprint 3 staff tools: sign-in,
+a date-filtered dashboard, and reservation status changes.
 
 ## What works today
 
@@ -20,8 +20,9 @@ booking flow, backed by a concurrency-safe reservation engine.
 - A single-page React client for the whole flow, with a booking reference and
   an on-screen confirmation.
 
-Staff tooling (authentication, seating, cancellations) is Sprint 3 and is not
-part of this slice.
+Staff sign in from the Staff link on the booking page. The dashboard lists
+one date and can seat, complete, cancel, or mark a no-show. Cancelling,
+completing, or marking a no-show releases that table. Seating does not.
 
 ## Prerequisites
 
@@ -45,14 +46,20 @@ This installs both workspaces (`server` and `client`) from the repository root.
 cp server/.env.example server/.env
 ```
 
-Then set `MONGODB_URI` in `server/.env` to your connection string:
+Then set these values in `server/.env`:
 
 ```
 MONGODB_URI="mongodb+srv://<user>:<password>@<cluster>/<db>?retryWrites=true&w=majority"
 PORT=4000
+JWT_SECRET="<at least 32 random characters>"
+SEED_STAFF_PASSWORD="<password you can type at staff sign-in>"
 ```
 
 `PORT` defaults to `4000`. The Vite dev server proxies `/api` to it.
+
+`JWT_SECRET` is required and must be at least 32 characters. Staff sign-in returns
+`500 AUTH_NOT_CONFIGURED` when it is missing or shorter. `SEED_STAFF_PASSWORD` is
+the password for the seeded username `staff`.
 
 ## Seed the database
 
@@ -61,9 +68,13 @@ npm run seed
 ```
 
 Creates six tables (capacities 2, 2, 4, 4, 6, 8) and one staff account
-(`staff`). The script is idempotent — running it repeatedly leaves the same six
-tables and one staff user. It requires `MONGODB_URI`; without it the script
-prints setup instructions and exits non-zero instead of crashing.
+(`staff`). The password comes from `SEED_STAFF_PASSWORD`. If that variable is
+unset, the script generates a random password and prints it once. Running the
+seed again replaces the stored password hash.
+
+The script is idempotent for the six tables: running it repeatedly leaves the
+same six tables and one staff user. It requires `MONGODB_URI`. Without it, the
+script prints setup instructions and exits non-zero instead of crashing.
 
 ## Run in development
 
@@ -73,6 +84,8 @@ npm run dev
 
 - API: http://localhost:4000
 - Customer app: http://localhost:5173
+
+The five-minute presentation path is in [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
 
 Useful subsets:
 
@@ -91,7 +104,7 @@ Runs the server test suite with Vitest against `mongodb-memory-server` — a rea
 MongoDB instance, with real unique indexes, no mocking. The first run downloads
 a MongoDB binary and may take a minute; later runs are fast.
 
-The suite is **60 tests across 11 files**. It covers the public API contract and,
+The suite is **77 tests across 13 files**. It covers the public API contract and,
 most importantly, the correctness properties:
 
 | File | Guards |
@@ -103,6 +116,8 @@ most importantly, the correctness properties:
 | `reconciler.test.ts` | Orphaned slot rows older than the grace period are removed |
 | `error-handling.test.ts` | Malformed JSON returns 400, oversized bodies 413, and no customer PII reaches the log |
 | `status-transitions.test.ts` | All 25 status pairs match the transition matrix |
+| `staff-auth.test.ts` | Login issues a bearer token, bad logins are indistinguishable, the staff list is one local date |
+| `staff-status.test.ts` | A legal status change is saved, an illegal one is rejected, and cancelling frees only that table |
 | `rate-limit.test.ts` | `POST /api/reservations` is throttled; availability is not |
 | `performance.test.ts` | Availability latency against the PRD 2 second target |
 
@@ -222,6 +237,66 @@ unavailable ones.
 | `429` | `RATE_LIMITED` | More than 10 booking attempts per minute from one address |
 | `503` | `CAPACITY_EXHAUSTED` | Internal candidate exhaustion; distinct from a real conflict |
 
+### `POST /api/auth/login`
+
+```json
+{
+  "username": "staff",
+  "password": "the seeded password"
+}
+```
+
+`200` returns a bearer token. Send it as `Authorization: Bearer <token>`.
+No cookie is set.
+
+```json
+{
+  "token": "<jwt>",
+  "tokenType": "Bearer",
+  "expiresInSeconds": 28800,
+  "staff": { "username": "staff", "role": "staff" }
+}
+```
+
+`400 INVALID_CREDENTIALS` means the body is incomplete. `401 INVALID_CREDENTIALS`
+means the username or password is wrong. Those two failures use the same code and
+message, so the response does not reveal which accounts exist. `JWT_SECRET` is
+required and must be at least 32 characters. Login returns
+`500 AUTH_NOT_CONFIGURED` when it is missing.
+
+### `GET /api/staff/reservations?date=YYYY-MM-DD`
+
+Requires a valid staff bearer token. Returns reservations whose start time falls
+on that restaurant-local date, ordered earliest first, including customer contact
+details. A 20:30 booking stays on its local date even when its UTC instant is on
+the next calendar day.
+
+`401 UNAUTHENTICATED` means the token is missing or invalid. `400 INVALID_DATE`
+means the date is not a real `YYYY-MM-DD` value.
+
+### `PATCH /api/staff/reservations/:reference/status`
+
+Requires a valid staff bearer token. Body:
+
+```json
+{ "status": "SEATED" }
+```
+
+`reference` is the public booking reference, not the database id. Allowed
+changes: `CONFIRMED` to `SEATED`, `CANCELLED`, or `NO_SHOW`; `SEATED` to
+`COMPLETED`. `COMPLETED`, `CANCELLED`, and `NO_SHOW` do not change again.
+Sending the status the reservation already has returns `200` and changes
+nothing.
+
+Leaving `CONFIRMED` or `SEATED` for a status that does not hold a table deletes
+that reservation's slot rows, so the table can be booked again. `SEATED` still
+holds the table.
+
+`200` returns the updated reservation, including contact details. `400
+INVALID_STATUS` means the status is not one of the five. `409
+INVALID_TRANSITION` means the matrix forbids the change and nothing was saved.
+`404 NOT_FOUND` means the reference does not exist.
+
 ## How double-booking is prevented
 
 The `tableSlots` collection stores one row per occupied 30-minute slot per
@@ -253,12 +328,13 @@ server/
     app.ts            Express app factory (mounted directly by tests)
     db.ts             Mongoose connection helpers
     config/booking.ts service hours, duration, statuses, transitions, timezone
-    lib/              time (local<->UTC), validation, http errors, slots, rate-limit
+    lib/              time, validation, auth, http errors, slots, rate-limit
+    middleware/       staff bearer-token guard
     models/           Table, Reservation, StaffUser, TableSlot
-    services/booking.ts availability + booking orchestration
-    routes/           availability, reservations
+    services/         booking orchestration, staff list and status changes
+    routes/           auth, availability, reservations, staff
     scripts/seed.ts   idempotent table + staff seeding
-  tests/              11 files, 60 tests (see Test section)
+  tests/              13 files, 77 tests (see Test section)
 client/
   src/                single-page React app (api.ts, App.tsx, components/)
 ```
