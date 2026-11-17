@@ -113,3 +113,24 @@ describe('rate limit configuration', () => {
     expect(RESERVATION_RATE_WINDOW_MS).toBe(60_000);
   });
 });
+
+describe('proxy trust', () => {
+  it('trusts one proxy hop so a forwarded address is the rate-limit key', async () => {
+    const app = limitedApp();
+    await seedTables([2]);
+    const date = futureDateIso();
+    const body = reservationBody({ date, time: '18:30', partySize: 2 });
+
+    const statuses: number[] = [];
+    for (let attempt = 0; attempt < TEST_LIMIT + 2; attempt += 1) {
+      const response = await request(app)
+        .post('/api/reservations')
+        .set('X-Forwarded-For', '203.0.113.10')
+        .send(body);
+      statuses.push(response.status);
+    }
+
+    expect(statuses.slice(0, TEST_LIMIT).every((status) => status < 429)).toBe(true);
+    expect(statuses.slice(TEST_LIMIT)).toEqual([429, 429]);
+  });
+});

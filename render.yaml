@@ -1,0 +1,20 @@
+# Free web service for the reservation API.
+# Secrets are entered in the Render dashboard. They are not stored here.
+services:
+  - type: web
+    name: restaurant-reservations-api
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm ci
+    startCommand: npm run start --workspace server
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SEED_STAFF_PASSWORD
+        sync: false

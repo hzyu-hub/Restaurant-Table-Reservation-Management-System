@@ -169,6 +169,10 @@ export function createApp(options: AppOptions = {}): Express {
   const app = express();
 
   app.disable('x-powered-by');
+  // Render terminates TLS and forwards one proxy hop. Trusting exactly one
+  // hop lets the rate limiter see the customer address. `true` would trust
+  // any client-supplied chain and is rejected by express-rate-limit.
+  app.set('trust proxy', 1);
   app.use(cors());
   app.use(express.json({ limit: '64kb' }));
 

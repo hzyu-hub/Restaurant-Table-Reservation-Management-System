@@ -131,6 +131,23 @@ npm run build            # type-checks and bundles the client into client/dist
 npm run typecheck        # tsc --noEmit for both workspaces
 ```
 
+## Deploy the API
+
+The customer page can be hosted on GitHub Pages. The API cannot. [Render](https://render.com)
+runs the Express server from `render.yaml` on the free instance, which sleeps after 15
+minutes without traffic and takes about a minute to wake.
+
+1. Create a free [MongoDB Atlas](https://www.mongodb.com/atlas) M0 cluster, a database
+   user, and a network rule of `0.0.0.0/0`. Copy the `mongodb+srv://` connection string
+   and set its database name to `restaurant_reservations`.
+2. In Render, create a Blueprint from this repository. When prompted, enter
+   `MONGODB_URI`, `JWT_SECRET` (at least 32 characters), and `SEED_STAFF_PASSWORD`.
+   Do not commit any of them.
+3. From a machine that has those same values in `server/.env`, run `npm run seed`.
+   The staff username is `staff`.
+4. Open `https://<service>.onrender.com/api/health`. A response of `{ "ok": true }`
+   means the API is up. That origin, without `/api`, is the address the Pages site uses.
+
 ## Continuous integration
 
 `.github/workflows/ci.yml` runs on every push and pull request to `main`, on Node 20
