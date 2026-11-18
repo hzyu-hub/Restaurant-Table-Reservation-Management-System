@@ -4,6 +4,11 @@ MERN restaurant table reservation system (SDLC Team 5). This repository currentl
 contains the customer booking flow and the Sprint 3 staff tools: sign-in,
 a date-filtered dashboard, and reservation status changes.
 
+The live customer page is
+[Table Reservations](https://hzyu-hub.github.io/Restaurant-Table-Reservation-Management-System/).
+The API is
+[restaurant-reservations-api](https://restaurant-reservations-api-eqnl.onrender.com).
+
 ## What works today
 
 - Browse availability for any upcoming date and party size — 20 bookable start
@@ -131,22 +136,35 @@ npm run build            # type-checks and bundles the client into client/dist
 npm run typecheck        # tsc --noEmit for both workspaces
 ```
 
-## Deploy the API
+## Deploy
 
-The customer page can be hosted on GitHub Pages. The API cannot. [Render](https://render.com)
-runs the Express server from `render.yaml` on the free instance, which sleeps after 15
-minutes without traffic and takes about a minute to wake.
+GitHub Pages hosts the customer page. [Render](https://render.com) hosts the API
+from `render.yaml` on the free instance. That instance sleeps after 15 minutes
+without traffic and takes about a minute to wake.
+
+`.github/workflows/pages.yml` builds the page on every push to `main`. The build
+sets `VITE_API_BASE_URL` to
+`https://restaurant-reservations-api-eqnl.onrender.com`. `GET /api/health`
+returns `{ "ok": true }` when the API is awake.
+
+The database already contains the six tables and the staff user. The staff
+username is `staff`. The password is not stored in this repository.
+
+### Rebuild
+
+Use these steps only to recreate the deployment. Do not commit `MONGODB_URI`,
+`JWT_SECRET`, or `SEED_STAFF_PASSWORD`.
 
 1. Create a free [MongoDB Atlas](https://www.mongodb.com/atlas) M0 cluster, a database
    user, and a network rule of `0.0.0.0/0`. Copy the `mongodb+srv://` connection string
    and set its database name to `restaurant_reservations`.
 2. In Render, create a Blueprint from this repository. When prompted, enter
    `MONGODB_URI`, `JWT_SECRET` (at least 32 characters), and `SEED_STAFF_PASSWORD`.
-   Do not commit any of them.
 3. From a machine that has those same values in `server/.env`, run `npm run seed`.
    The staff username is `staff`.
 4. Open `https://<service>.onrender.com/api/health`. A response of `{ "ok": true }`
-   means the API is up. That origin, without `/api`, is the address the Pages site uses.
+   means the API is up. Set `VITE_API_BASE_URL` in `.github/workflows/pages.yml`
+   to that origin, without `/api`.
 
 ## Continuous integration
 
