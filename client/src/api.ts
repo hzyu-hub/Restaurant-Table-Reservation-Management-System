@@ -175,7 +175,9 @@ async function toApiError(response: Response): Promise<ApiRequestError> {
 async function requestJson(path: string, init?: RequestInit): Promise<unknown> {
   let response: Response;
   try {
-    response = await fetch(path, init);
+    const configuredBase = import.meta.env.VITE_API_BASE_URL;
+    const base = typeof configuredBase === 'string' ? configuredBase.replace(/\/$/, '') : '';
+    response = await fetch(`${base}${path}`, init);
   } catch {
     throw new ApiRequestError(
       0,

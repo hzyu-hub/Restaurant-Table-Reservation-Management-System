@@ -4,6 +4,7 @@ import { defineConfig } from 'vite';
 const API_TARGET = process.env.API_TARGET ?? 'http://localhost:4000';
 
 export default defineConfig({
+  base: '/Restaurant-Table-Reservation-Management-System/',
   plugins: [react()],
   server: {
     port: 5173,
