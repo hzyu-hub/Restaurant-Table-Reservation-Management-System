@@ -44,7 +44,7 @@ function AccountWorkspace({ session, onSignOut }: {
 
   const reservationLabel = customer ? 'Table Reservation' : 'New Reservation';
   const bookingsLabel = customer ? 'My Bookings' : 'Bookings';
-  const items: View[] = customer ? ['reservation', 'bookings'] : ['bookings', 'reservation'];
+  const items: View[] = ['reservation', 'bookings'];
 
   return (
     <div className="account-app" onKeyDown={(event) => {
