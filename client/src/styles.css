@@ -525,7 +525,7 @@ select:focus-visible {
 /* Account layout uses the existing warm neutrals, rust accent and form controls. */
 .auth-page { align-items: center; }
 .auth-card { width: min(28rem, 100%); }
-.auth-brand { margin: 0 0 1.75rem; color: var(--accent); font-weight: 650; }
+.auth-brand { margin: 0 0 1.75rem; color: var(--accent); font-weight: 650; text-align: center; }
 .auth-switch, .toolbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 .auth-switch { margin-top: 1.25rem; color: var(--ink-soft); font-size: 0.875rem; }
 .session-notice { padding: 0.75rem; background: var(--canvas); border-radius: 8px; }
