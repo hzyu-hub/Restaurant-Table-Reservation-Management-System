@@ -63,7 +63,7 @@ function toBanner(error: unknown): BannerState {
   };
 }
 
-const PARTY_SIZES = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+const PARTY_SIZES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 const FALLBACK_TIMEZONE = 'America/Toronto';
 
 export default function App() {
