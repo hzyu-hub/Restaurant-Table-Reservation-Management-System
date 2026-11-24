@@ -9,7 +9,7 @@
  */
 import bcrypt from 'bcryptjs';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { StaffUser } from '../src/models/StaffUser.js';
 import { futureDateIso, reservationBody, seedTables } from './helpers.js';
@@ -259,36 +259,43 @@ describe('GET /api/staff/reservations', () => {
   });
 
   it('keeps a late booking on its restaurant-local date across the UTC day boundary', async () => {
-    await seedStaff();
-    await seedTables([2]);
-    const date = '2026-11-17';
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      // Keep the winter fixture in the future without faking MongoDB's timers.
+      vi.setSystemTime(new Date('2026-11-17T12:00:00.000Z'));
+      await seedStaff();
+      await seedTables([2]);
+      const date = '2026-11-17';
 
-    const created = await request(createApp())
-      .post('/api/reservations')
-      .send(
-        reservationBody({
-          date,
-          time: '20:30',
-          partySize: 2,
-          customerName: 'Ada Lovelace',
-        }),
-      );
-    expect(created.status).toBe(201);
+      const created = await request(createApp())
+        .post('/api/reservations')
+        .send(
+          reservationBody({
+            date,
+            time: '20:30',
+            partySize: 2,
+            customerName: 'Ada Lovelace',
+          }),
+        );
+      expect(created.status).toBe(201);
 
-    const session = await login();
-    const sameDay = await request(createApp())
-      .get('/api/staff/reservations')
-      .set('Authorization', `Bearer ${session.token}`)
-      .query({ date });
-    const nextDay = await request(createApp())
-      .get('/api/staff/reservations')
-      .set('Authorization', `Bearer ${session.token}`)
-      .query({ date: '2026-11-18' });
+      const session = await login();
+      const sameDay = await request(createApp())
+        .get('/api/staff/reservations')
+        .set('Authorization', `Bearer ${session.token}`)
+        .query({ date });
+      const nextDay = await request(createApp())
+        .get('/api/staff/reservations')
+        .set('Authorization', `Bearer ${session.token}`)
+        .query({ date: '2026-11-18' });
 
-    expect(sameDay.status).toBe(200);
-    expect(nextDay.status).toBe(200);
-    expect((sameDay.body as StaffListBody).reservations).toHaveLength(1);
-    expect((nextDay.body as StaffListBody).reservations).toHaveLength(0);
+      expect(sameDay.status).toBe(200);
+      expect(nextDay.status).toBe(200);
+      expect((sameDay.body as StaffListBody).reservations).toHaveLength(1);
+      expect((nextDay.body as StaffListBody).reservations).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rejects a staff date query that is not a calendar date', async () => {
