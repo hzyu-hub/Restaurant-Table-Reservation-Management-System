@@ -94,7 +94,7 @@ export function parseClockTime(raw: unknown): string {
   return value;
 }
 
-function parseCustomerName(raw: unknown): string {
+export function parseCustomerName(raw: unknown): string {
   const name = requireString(
     isRecord(raw) ? raw : {},
     'customerName',
@@ -116,7 +116,7 @@ function parseCustomerName(raw: unknown): string {
   return name;
 }
 
-function parseCustomerPhone(raw: unknown): string {
+export function parseCustomerPhone(raw: unknown): string {
   const phone = requireString(
     isRecord(raw) ? raw : {},
     'customerPhone',
@@ -139,7 +139,7 @@ function parseCustomerPhone(raw: unknown): string {
   return phone;
 }
 
-function parseOptionalEmail(raw: unknown): string | undefined {
+export function parseOptionalEmail(raw: unknown): string | undefined {
   if (raw === undefined || raw === null || raw === '') {
     return undefined;
   }

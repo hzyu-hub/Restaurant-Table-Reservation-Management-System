@@ -7,6 +7,7 @@
  * - staff endpoints reject missing or invalid tokens
  * - an authorized staff member sees one local date, with contact details
  */
+import { staffAuthorization } from './auth-helper.js';
 import bcrypt from 'bcryptjs';
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
@@ -131,6 +132,16 @@ describe('POST /api/auth/login', () => {
     expect(JSON.stringify(response.body)).not.toContain('passwordHash');
   });
 
+  it('accepts an existing staff password exceeding 72 UTF-8 bytes', async () => {
+    const password = 'x'.repeat(73);
+    await seedStaff(STAFF_USERNAME, password);
+
+    const session = await login(STAFF_USERNAME, password);
+
+    expect(session.staff).toEqual({ username: STAFF_USERNAME, role: 'staff' });
+    expect(session.token.split('.')).toHaveLength(3);
+  });
+
   it('rejects a wrong password and an unknown user with the same response', async () => {
     await seedStaff();
 
@@ -203,7 +214,7 @@ describe('GET /api/staff/reservations', () => {
     const otherDate = futureDateIso(15);
 
     const first = await request(createApp())
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(
         reservationBody({
           date,
@@ -215,7 +226,7 @@ describe('GET /api/staff/reservations', () => {
         }),
       );
     const second = await request(createApp())
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(
         reservationBody({
           date,
@@ -226,7 +237,7 @@ describe('GET /api/staff/reservations', () => {
         }),
       );
     const otherDay = await request(createApp())
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date: otherDate, time: '18:00', partySize: 2 }));
 
     expect(first.status).toBe(201);
@@ -268,7 +279,7 @@ describe('GET /api/staff/reservations', () => {
       const date = '2026-11-17';
 
       const created = await request(createApp())
-        .post('/api/reservations')
+        .post('/api/reservations').set('Authorization', staffAuthorization())
         .send(
           reservationBody({
             date,

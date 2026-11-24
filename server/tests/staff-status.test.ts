@@ -5,6 +5,7 @@
  * Leaving the blocking set releases that reservation's slots, and only those,
  * so the table can be booked again. Seating keeps the table held.
  */
+import { staffAuthorization } from './auth-helper.js';
 import bcrypt from 'bcryptjs';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
@@ -60,7 +61,7 @@ async function staffToken(): Promise<string> {
 
 async function book(date: string, time: string, partySize: number): Promise<CreatedReservation> {
   const response = await request(createApp())
-    .post('/api/reservations')
+    .post('/api/reservations').set('Authorization', staffAuthorization())
     .send(reservationBody({ date, time, partySize }));
   expect(response.status).toBe(201);
   const body = response.body as CreatedReservation;
@@ -100,7 +101,7 @@ describe('PATCH /api/staff/reservations/:reference/status', () => {
     await assertSlotInvariant();
 
     const again = await request(createApp())
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date, time: '18:00', partySize: 2, customerName: 'Grace Hopper' }));
     expect(again.status).toBe(409);
   });
@@ -129,7 +130,7 @@ describe('PATCH /api/staff/reservations/:reference/status', () => {
     await assertSlotInvariant();
 
     const rebooked = await request(createApp())
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(
         reservationBody({
           date,
@@ -142,7 +143,7 @@ describe('PATCH /api/staff/reservations/:reference/status', () => {
     await assertSlotInvariant();
 
     const stillHeld = await request(createApp())
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(
         reservationBody({
           date,

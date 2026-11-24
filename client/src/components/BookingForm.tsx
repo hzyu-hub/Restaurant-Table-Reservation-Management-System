@@ -10,6 +10,7 @@ interface BookingFormProps {
   selectedTimeLabel: string | null;
   partySize: number;
   submitting: boolean;
+  initialValues?: CustomerFormValues;
   onSubmit: (values: CustomerFormValues) => void;
 }
 
@@ -18,11 +19,12 @@ export default function BookingForm({
   selectedTimeLabel,
   partySize,
   submitting,
+  initialValues,
   onSubmit,
 }: BookingFormProps) {
-  const [customerName, setCustomerName] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerName, setCustomerName] = useState(initialValues?.customerName ?? '');
+  const [customerEmail, setCustomerEmail] = useState(initialValues?.customerEmail ?? '');
+  const [customerPhone, setCustomerPhone] = useState(initialValues?.customerPhone ?? '');
 
   const canSubmit =
     selectedTimeLabel !== null &&
@@ -43,8 +45,8 @@ export default function BookingForm({
   };
 
   return (
-    <form className="booking-form" onSubmit={handleSubmit} noValidate>
-      <h2>Your details</h2>
+    <form className="booking-form" onSubmit={handleSubmit}>
+      <h2>Contact details</h2>
 
       <p className="booking-form__summary">
         {selectedTimeLabel === null
@@ -65,7 +67,7 @@ export default function BookingForm({
           onChange={(event) => {
             setCustomerName(event.target.value);
           }}
-          placeholder="Ada Lovelace"
+          disabled={submitting}
         />
       </label>
 
@@ -80,7 +82,8 @@ export default function BookingForm({
           onChange={(event) => {
             setCustomerPhone(event.target.value);
           }}
-          placeholder="416-555-0134"
+          disabled={submitting}
+          minLength={10}
         />
       </label>
 
@@ -96,7 +99,7 @@ export default function BookingForm({
           onChange={(event) => {
             setCustomerEmail(event.target.value);
           }}
-          placeholder="ada@example.com"
+          disabled={submitting}
         />
       </label>
 

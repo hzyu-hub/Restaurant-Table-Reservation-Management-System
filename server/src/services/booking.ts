@@ -266,6 +266,7 @@ async function describeNoTableAvailable(partySize: number): Promise<string> {
  */
 export async function createReservation(
   input: ReservationInput,
+  customerId?: string,
 ): Promise<CreatedReservation> {
   const { startTime, endTime, slotIndex } = resolveRequestedWindow(
     input.date,
@@ -319,6 +320,7 @@ export async function createReservation(
       const reservation = await Reservation.create({
         _id: reservationId,
         reference: generateReference(),
+        customerId,
         customerName: input.customerName,
         customerEmail: input.customerEmail,
         customerPhone: input.customerPhone,

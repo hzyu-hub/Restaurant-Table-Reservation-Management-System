@@ -2,7 +2,7 @@
 
 Restaurant Table Reservation Management System, SDLC Team 5.
 
-This is a five-minute live path. It shows a booking, a conflict, staff sign-in, seating, and cancellation. It does not cover every edge case.
+This is a five-minute live path. It shows customer registration, a booking, a conflict, staff sign-in, seating, and cancellation. It does not cover every edge case.
 
 ## Before the demo
 
@@ -28,15 +28,16 @@ npm run seed
 npm run dev
 ```
 
-Open http://localhost:5173. The API runs at http://localhost:4000.
+Open http://localhost:5173. The page opens at sign-in. The API runs at http://localhost:4000.
 
 The seed creates six tables: T1 and T2 seat 2, T3 and T4 seat 4, T5 seats 6, and T6 seats 8. The staff username is `staff`. Use the password from `SEED_STAFF_PASSWORD`.
 
 Choose one future date and use it for every step. The examples below use `4 guests` and `2 guests`, but any valid sizes work as long as the expected table fits.
 
-## 1. Book the first table (45 seconds)
+## 1. Register and book the first table (45 seconds)
 
-1. On **Table Reservations**, choose the demo date.
+1. Click **Create an account** and register with username `ada`, full name `Ada Lovelace`, a password, and phone `4165550134`.
+2. On **Table Reservation**, choose the demo date.
 2. Set **Party size** to `4 guests`.
 3. Under **Pick a time**, choose `6:00 PM`.
 4. Enter:
@@ -90,15 +91,15 @@ The direct API check is optional. If asked, show the existing automated concurre
 
 ## 3. Sign in as staff (30 seconds)
 
-1. Click **Staff** at the top of the booking page.
+1. Click **Sign Out**.
 2. Enter username `staff` and the seeded password.
 3. Click **Sign in**.
 
 Expected result:
 
-- The page says `Signed in as staff`.
-- The dashboard lists the reservations for the selected date.
-- Each row shows the time, customer, party size, table, phone, and reference.
+- The greeting says `Hello, staff`.
+- **Bookings** opens on today's date.
+- Change the date to the demo date. Each row shows the time, customer, party size, table, phone, and reference.
 - A confirmed reservation has **Seat**, **Cancel**, and **No-show** buttons.
 
 Say: "The token stays in browser memory. Refreshing the page signs the staff member out."
@@ -126,8 +127,8 @@ Expected result:
 
 Now prove that the slots were released:
 
-1. Click **Sign out**.
-2. Return to the customer page.
+1. Click **Sign Out**, then sign in again as `ada`.
+2. Open **Table Reservation**.
 3. Select the same date and `4 guests`.
 
 Expected result:
@@ -148,7 +149,7 @@ Say: "Only confirmed and seated reservations hold tables. Cancelling deletes tha
 
 ## Out of scope for this demo
 
-- Customer self-cancellation and email or SMS confirmation.
-- Parties larger than 8. They cannot be booked online because the largest table seats 8.
+- Email or SMS confirmation. Customer cancellation is covered under My Bookings.
+- Parties larger than 8. They appear in the selector but cannot be seated because the largest table seats 8.
 - Combining two tables for one party.
 - Deployment and production credentials.

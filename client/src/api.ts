@@ -178,11 +178,12 @@ async function requestJson(path: string, init?: RequestInit): Promise<unknown> {
     const configuredBase = import.meta.env.VITE_API_BASE_URL;
     const base = typeof configuredBase === 'string' ? configuredBase.replace(/\/$/, '') : '';
     response = await fetch(`${base}${path}`, init);
-  } catch {
+  } catch (error: unknown) {
+    if (init?.signal?.aborted) throw error;
     throw new ApiRequestError(
       0,
       'NETWORK_ERROR',
-      'Could not reach the server. Is the API running on port 4000?',
+      'We could not connect. Please try again in a moment.',
     );
   }
 
@@ -194,8 +195,8 @@ async function requestJson(path: string, init?: RequestInit): Promise<unknown> {
 }
 
 /** `GET /api/health`, used only to learn the restaurant's current date. */
-export async function fetchServerClock(): Promise<ServerClock> {
-  const payload = await requestJson('/api/health');
+export async function fetchServerClock(signal?: AbortSignal): Promise<ServerClock> {
+  const payload = await requestJson('/api/health', { signal });
   return parseServerClock(payload);
 }
 
@@ -203,22 +204,24 @@ export async function fetchServerClock(): Promise<ServerClock> {
 export async function fetchAvailability(
   date: string,
   partySize: number,
+  signal?: AbortSignal,
 ): Promise<AvailabilityResponse> {
   const query = new URLSearchParams({
     date,
     partySize: String(partySize),
   });
-  const payload = await requestJson(`/api/availability?${query.toString()}`);
+  const payload = await requestJson(`/api/availability?${query.toString()}`, { signal });
   return parseAvailability(payload);
 }
 
 /** `POST /api/reservations`. */
 export async function createReservation(
+  token: string,
   body: ReservationRequest,
 ): Promise<ReservationResponse> {
   const payload = await requestJson('/api/reservations', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(body),
   });
   return parseReservation(payload);
@@ -231,14 +234,32 @@ export type ReservationStatus =
   | 'CANCELLED'
   | 'NO_SHOW';
 
-export interface StaffSession {
+export interface AccountProfile {
+  id: string;
+  username: string;
+  role: 'customer' | 'staff' | 'admin';
+  name: string;
+  phone: string;
+  email: string | null;
+}
+
+export interface AccountSession {
   token: string;
   tokenType: 'Bearer';
   expiresInSeconds: number;
-  staff: {
-    username: string;
-    role: 'staff' | 'admin';
-  };
+  user: AccountProfile;
+}
+
+export interface RegistrationRequest {
+  username: string;
+  password: string;
+  name: string;
+  phone: string;
+  email?: string;
+}
+
+export interface CustomerReservationList extends ServerClock {
+  reservations: StaffReservation[];
 }
 
 export interface StaffReservation {
@@ -274,24 +295,31 @@ function isReservationStatus(value: string): value is ReservationStatus {
   return (STATUSES as readonly string[]).includes(value);
 }
 
-function parseStaffSession(value: unknown): StaffSession {
-  if (!isRecord(value) || !isRecord(value.staff)) {
+function parseAccountSession(value: unknown): AccountSession {
+  if (!isRecord(value) || !isRecord(value.user)) {
     throw new Error('Malformed API response: login is not a session.');
   }
-  const role = value.staff.role;
-  if (role !== 'staff' && role !== 'admin') {
-    throw new Error('Malformed API response: staff role is not recognized.');
+  const role = value.user.role;
+  if (role !== 'customer' && role !== 'staff' && role !== 'admin') {
+    throw new Error('Malformed API response: account role is not recognized.');
   }
-  const tokenType = value.tokenType;
-  if (tokenType !== 'Bearer') {
+  if (value.tokenType !== 'Bearer') {
     throw new Error('Malformed API response: token type is not Bearer.');
+  }
+  const email = value.user.email;
+  if (email !== null && typeof email !== 'string') {
+    throw new Error('Malformed API response: email is not a string or null.');
   }
   return {
     token: readString(value, 'token'),
-    tokenType,
+    tokenType: value.tokenType,
     expiresInSeconds: readNumber(value, 'expiresInSeconds'),
-    staff: {
-      username: readString(value.staff, 'username'),
+    user: {
+      id: readString(value.user, 'id'),
+      username: readString(value.user, 'username'),
+      name: readString(value.user, 'name'),
+      phone: readString(value.user, 'phone'),
+      email,
       role,
     },
   };
@@ -342,26 +370,28 @@ function parseStaffList(value: unknown): StaffReservationList {
 }
 
 /** `POST /api/auth/login`. The token stays in memory; nothing is written to storage. */
-export async function loginStaff(
+export async function loginAccount(
   username: string,
   password: string,
-): Promise<StaffSession> {
+): Promise<AccountSession> {
   const payload = await requestJson('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   });
-  return parseStaffSession(payload);
+  return parseAccountSession(payload);
 }
 
 /** `GET /api/staff/reservations?date=YYYY-MM-DD`. */
 export async function fetchStaffReservations(
   token: string,
   date: string,
+  signal?: AbortSignal,
 ): Promise<StaffReservationList> {
   const query = new URLSearchParams({ date });
   const payload = await requestJson(`/api/staff/reservations?${query.toString()}`, {
     headers: { Authorization: `Bearer ${token}` },
+    signal,
   });
   return parseStaffList(payload);
 }
@@ -384,4 +414,36 @@ export async function updateReservationStatus(
     },
   );
   return parseStaffReservation(payload);
+}
+
+export async function registerAccount(body: RegistrationRequest): Promise<AccountSession> {
+  return parseAccountSession(await requestJson('/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }));
+}
+
+export async function fetchCustomerReservations(token: string, signal?: AbortSignal): Promise<CustomerReservationList> {
+  const payload = await requestJson('/api/customer/reservations', {
+    headers: { Authorization: `Bearer ${token}` },
+    signal,
+  });
+  if (!isRecord(payload) || !Array.isArray(payload.reservations)) {
+    throw new Error('Malformed API response: customer bookings are not a list.');
+  }
+  return {
+    ...parseServerClock(payload),
+    reservations: payload.reservations.map(parseStaffReservation),
+  };
+}
+
+export async function cancelCustomerReservation(
+  token: string,
+  reference: string,
+): Promise<StaffReservation> {
+  return parseStaffReservation(await requestJson(
+    `/api/customer/reservations/${encodeURIComponent(reference)}/cancel`,
+    { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } },
+  ));
 }

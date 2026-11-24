@@ -10,6 +10,7 @@ const reservationSchema = new Schema(
       trim: true,
       index: true,
     },
+    customerId: { type: Schema.Types.ObjectId, ref: 'StaffUser', required: false },
     customerName: {
       type: String,
       required: true,
@@ -56,6 +57,8 @@ const reservationSchema = new Schema(
   },
   { timestamps: true, collection: 'reservations' },
 );
+
+reservationSchema.index({ customerId: 1, startTime: 1, reference: 1 });
 
 export type ReservationAttributes = InferSchemaType<typeof reservationSchema>;
 export type ReservationDocument = HydratedDocument<ReservationAttributes>;

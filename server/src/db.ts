@@ -1,4 +1,6 @@
 import mongoose from 'mongoose';
+import { StaffUser } from './models/StaffUser.js';
+import { Reservation } from './models/Reservation.js';
 import { ensureSlotIndexes, reconcileOrphanedSlots } from './lib/slots.js';
 
 /**
@@ -30,6 +32,7 @@ export async function connectToDatabase(uri: string): Promise<void> {
     autoIndex: false,
   });
 
+  await ensureAccountIndexes();
   await ensureSlotIndexes();
 
   // Recover any table that a crashed process left blocked. Rows younger than
@@ -47,3 +50,9 @@ export async function disconnectFromDatabase(): Promise<void> {
 }
 
 export { mongoose };
+
+/** Explicit index creation, shared by startup and the integration harness. */
+export async function ensureAccountIndexes(): Promise<void> {
+  await StaffUser.createIndexes();
+  await Reservation.createIndexes();
+}

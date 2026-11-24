@@ -1,8 +1,7 @@
 # Restaurant-Table-Reservation-Management-System
 
 MERN restaurant table reservation system (SDLC Team 5). This repository currently
-contains the customer booking flow and the Sprint 3 staff tools: sign-in,
-a date-filtered dashboard, and reservation status changes.
+contains customer accounts, table booking, and the staff dashboard.
 
 The live customer page is
 [Table Reservations](https://hzyu-hub.github.io/Restaurant-Table-Reservation-Management-System/).
@@ -22,12 +21,13 @@ The API is
   database restore.
 - Orphaned slot rows from a crashed request are swept at startup, with a grace
   period so in-flight bookings are never touched.
-- A single-page React client for the whole flow, with a booking reference and
-  an on-screen confirmation.
-
-Staff sign in from the Staff link on the booking page. The dashboard lists
-one date and can seat, complete, cancel, or mark a no-show. Cancelling,
-completing, or marking a no-show releases that table. Seating does not.
+- A single-page React client opens at sign-in. Customers register with a
+  username and password, then use Table Reservation and My Bookings.
+- Customers see only their own reservations and can cancel a future confirmed
+  booking after confirming the action.
+- Staff sign in with the seeded account and land on today's Bookings. They can
+  create a reservation and seat, complete, cancel, or mark a no-show. Cancelling,
+  completing, or marking a no-show releases the table. Seating does not.
 
 ## Prerequisites
 
@@ -88,7 +88,7 @@ npm run dev
 ```
 
 - API: http://localhost:4000
-- Customer app: http://localhost:5173
+- Web app: http://localhost:5173
 
 The five-minute presentation path is in [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
 
