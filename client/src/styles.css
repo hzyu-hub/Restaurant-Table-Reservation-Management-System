@@ -547,7 +547,7 @@ select:focus-visible {
 .reservation__time { flex-wrap: wrap; }
 .customer-cancel { flex-shrink: 0; max-width: 100%; }
 .cancel-confirmation p { margin: 0 0 0.5rem; font-size: 0.875rem; }
-.ghost-button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ghost-button[aria-pressed="true"] { background: var(--accent); color: #fff; }
 .field__optional { color: var(--ink-soft); }
 button, .slot, .ghost-button, .text-button, .error-banner__dismiss { min-height: 44px; }
 .error-banner__dismiss { min-width: 44px; flex-shrink: 0; }
