@@ -8,6 +8,7 @@
  *
  * These are real queries against the real collections - nothing is mocked.
  */
+import { staffAuthorization } from './auth-helper.js';
 import mongoose from 'mongoose';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
@@ -41,7 +42,7 @@ async function book(
   partySize = 2,
 ): Promise<{ reference: string; reservationId: string }> {
   const response = await request(app)
-    .post('/api/reservations')
+    .post('/api/reservations').set('Authorization', staffAuthorization())
     .send(reservationBody({ date, time, partySize }));
 
   expect(response.status).toBe(201);

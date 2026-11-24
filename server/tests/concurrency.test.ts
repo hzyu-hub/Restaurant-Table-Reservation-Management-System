@@ -5,6 +5,7 @@
  * `{tableId, slotStart}` index must let exactly one through. Anything else
  * (two 201s, or four 409s plus leftover slot rows) means the guard regressed.
  */
+import { staffAuthorization } from './auth-helper.js';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
@@ -25,7 +26,7 @@ describe('concurrency guard (FR4)', () => {
 
     const responses = await Promise.all(
       Array.from({ length: PARALLEL_REQUESTS }, () =>
-        request(app).post('/api/reservations').send(body),
+        request(app).post('/api/reservations').set('Authorization', staffAuthorization()).send(body),
       ),
     );
 
@@ -80,7 +81,7 @@ describe('concurrency guard (FR4)', () => {
 
     const responses = await Promise.all(
       Array.from({ length: PARALLEL_REQUESTS }, () =>
-        request(app).post('/api/reservations').send(body),
+        request(app).post('/api/reservations').set('Authorization', staffAuthorization()).send(body),
       ),
     );
 

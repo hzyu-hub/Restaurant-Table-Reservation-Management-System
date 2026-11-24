@@ -9,6 +9,7 @@
  * override actually turns the limiter on, so the suite cannot pass by mounting
  * nothing.
  */
+import { staffAuthorization } from './auth-helper.js';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
@@ -35,7 +36,7 @@ describe('POST /api/reservations rate limiting', () => {
 
     const statuses: number[] = [];
     for (let attempt = 0; attempt < TEST_LIMIT + 2; attempt += 1) {
-      const response = await request(app).post('/api/reservations').send(body);
+      const response = await request(app).post('/api/reservations').set('Authorization', staffAuthorization()).send(body);
       statuses.push(response.status);
     }
 
@@ -51,9 +52,9 @@ describe('POST /api/reservations rate limiting', () => {
     const date = futureDateIso();
     const body = reservationBody({ date, time: '19:00', partySize: 2 });
 
-    let last = await request(app).post('/api/reservations').send(body);
+    let last = await request(app).post('/api/reservations').set('Authorization', staffAuthorization()).send(body);
     for (let attempt = 0; attempt < TEST_LIMIT; attempt += 1) {
-      last = await request(app).post('/api/reservations').send(body);
+      last = await request(app).post('/api/reservations').set('Authorization', staffAuthorization()).send(body);
     }
 
     expect(last.status).toBe(429);
@@ -75,7 +76,7 @@ describe('POST /api/reservations rate limiting', () => {
     // Burn through the POST budget first, then prove the GET is unaffected.
     for (let attempt = 0; attempt < TEST_LIMIT + 2; attempt += 1) {
       await request(app)
-        .post('/api/reservations')
+        .post('/api/reservations').set('Authorization', staffAuthorization())
         .send(reservationBody({ date, time: '12:00', partySize: 2 }));
     }
 
@@ -98,7 +99,7 @@ describe('POST /api/reservations rate limiting', () => {
     const statuses: number[] = [];
     for (let attempt = 0; attempt < TEST_LIMIT + 2; attempt += 1) {
       const response = await request(unlimitedApp)
-        .post('/api/reservations')
+        .post('/api/reservations').set('Authorization', staffAuthorization())
         .send(reservationBody({ date, time: '12:00', partySize: 2 }));
       statuses.push(response.status);
     }
@@ -124,7 +125,7 @@ describe('proxy trust', () => {
     const statuses: number[] = [];
     for (let attempt = 0; attempt < TEST_LIMIT + 2; attempt += 1) {
       const response = await request(app)
-        .post('/api/reservations')
+        .post('/api/reservations').set('Authorization', staffAuthorization())
         .set('X-Forwarded-For', '203.0.113.10')
         .send(body);
       statuses.push(response.status);

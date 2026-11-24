@@ -10,8 +10,8 @@ interface StaffDashboardProps {
   pendingReference: string | null;
   onDateChange: (date: string) => void;
   onStatusChange: (reference: string, status: ReservationStatus) => void;
-  onSignOut: () => void;
-  username: string;
+  onToday: () => void;
+  onRefresh: () => void;
 }
 
 /** One day's reservations, with the status changes the matrix allows. */
@@ -24,8 +24,8 @@ export default function StaffDashboard({
   pendingReference,
   onDateChange,
   onStatusChange,
-  onSignOut,
-  username,
+  onToday,
+  onRefresh,
 }: StaffDashboardProps) {
   return (
     <section className="dashboard">
@@ -37,16 +37,17 @@ export default function StaffDashboard({
             name="staffDate"
             value={date}
             min={minDate ?? undefined}
+            disabled={pendingReference !== null}
             onChange={(event) => {
               onDateChange(event.target.value);
             }}
           />
         </label>
-        <div className="dashboard__session">
-          <span>Signed in as {username}</span>
-          <button type="button" className="text-button" onClick={onSignOut}>
-            Sign out
-          </button>
+        <div className="toolbar-actions">
+          <button type="button" className="ghost-button" onClick={onToday}
+            disabled={loading || pendingReference !== null}>Today</button>
+          <button type="button" className="ghost-button" onClick={onRefresh}
+            disabled={loading || pendingReference !== null}>Refresh</button>
         </div>
       </div>
 
@@ -60,7 +61,7 @@ export default function StaffDashboard({
         <ul className="reservation-list">
           {reservations.map((reservation) => {
             const actions = NEXT_STATUSES[reservation.status];
-            const busy = pendingReference === reservation.reference;
+            const busy = pendingReference !== null;
             return (
               <li key={reservation.reference} className="reservation">
                 <div className="reservation__main">

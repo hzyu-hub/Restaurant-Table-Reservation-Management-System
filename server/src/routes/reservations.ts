@@ -1,4 +1,5 @@
 import { Router, type RequestHandler } from 'express';
+import { requireAccount } from '../middleware/account.js';
 import { asyncHandler } from '../lib/http.js';
 import {
   createReservationRateLimiter,
@@ -27,7 +28,7 @@ export function createReservationsRouter(
 
   const createHandler = asyncHandler(async (req, res) => {
     const input = parseReservationInput(req.body);
-    const reservation = await createReservation(input);
+    const reservation = await createReservation(input, req.account?.role === 'customer' ? req.account.id : undefined);
     res.status(201).json(reservation);
   });
 
@@ -48,9 +49,9 @@ export function createReservationsRouter(
   // The limiter must sit in front of the handler, so the two cases are kept
   // explicit rather than splicing an array of handlers together.
   if (limiter === undefined) {
-    router.post('/', createHandler);
+    router.post('/', requireAccount, createHandler);
   } else {
-    router.post('/', limiter, createHandler);
+    router.post('/', limiter, requireAccount, createHandler);
   }
 
   return router;

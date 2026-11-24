@@ -9,7 +9,8 @@ import express, {
 import { RESTAURANT_TIMEZONE } from './config/booking.js';
 import { ApiError, errorPayload, isApiError } from './lib/http.js';
 import { todayInRestaurantTimezone } from './lib/time.js';
-import { authRouter } from './routes/auth.js';
+import { customerRouter } from './routes/customer.js';
+import { createAuthRouter } from './routes/auth.js';
 import { availabilityRouter } from './routes/availability.js';
 import {
   createReservationsRouter,
@@ -162,6 +163,8 @@ const notFoundHandler: RequestHandler = (_req, _res, next) => {
 export interface AppOptions {
   /** Rate limiter settings for `POST /api/reservations`. */
   reservationRateLimit?: ReservationsRouterOptions['rateLimit'];
+  /** Shared login/registration limiter; defaults to 20 attempts per 15 minutes. */
+  authRateLimit?: ReservationsRouterOptions['rateLimit'];
 }
 
 /** Builds the Express app. Exported separately so tests can mount it without a listener. */
@@ -192,9 +195,10 @@ export function createApp(options: AppOptions = {}): Express {
     });
   });
 
-  app.use('/api/auth', authRouter);
+  app.use('/api/auth', createAuthRouter(options.authRateLimit));
   app.use('/api/availability', availabilityRouter);
   app.use('/api/staff', staffRouter);
+  app.use('/api/customer', customerRouter);
   app.use(
     '/api/reservations',
     createReservationsRouter({ rateLimit: options.reservationRateLimit }),

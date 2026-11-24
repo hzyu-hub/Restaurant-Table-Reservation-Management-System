@@ -1,3 +1,4 @@
+import { staffAuthorization } from './auth-helper.js';
 import { formatInTimeZone } from 'date-fns-tz';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
@@ -35,7 +36,7 @@ describe('POST /api/reservations', () => {
     const date = futureDateIso();
 
     const response = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(
         reservationBody({
           date,
@@ -80,19 +81,19 @@ describe('POST /api/reservations', () => {
     await seedTables([4]);
 
     const shortName = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date: futureDateIso(), customerName: 'A' }));
     expect(shortName.status).toBe(400);
     expect(shortName.body).toMatchObject({ error: { code: 'INVALID_NAME' } });
 
     const numericName = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date: futureDateIso(), customerName: '1234' }));
     expect(numericName.status).toBe(400);
     expect(numericName.body).toMatchObject({ error: { code: 'INVALID_NAME' } });
 
     const missingName = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send({ ...reservationBody({ date: futureDateIso() }), customerName: undefined });
     expect(missingName.status).toBe(400);
     expect(missingName.body).toMatchObject({ error: { code: 'INVALID_NAME' } });
@@ -102,13 +103,13 @@ describe('POST /api/reservations', () => {
     await seedTables([4]);
 
     const letters = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date: futureDateIso(), customerPhone: 'call-me-maybe' }));
     expect(letters.status).toBe(400);
     expect(letters.body).toMatchObject({ error: { code: 'INVALID_PHONE' } });
 
     const tooShort = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date: futureDateIso(), customerPhone: '12345' }));
     expect(tooShort.status).toBe(400);
     expect(tooShort.body).toMatchObject({ error: { code: 'INVALID_PHONE' } });
@@ -118,7 +119,7 @@ describe('POST /api/reservations', () => {
     await seedTables([4]);
 
     const response = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date: futureDateIso(), time: '11:15' }));
 
     expect(response.status).toBe(400);
@@ -130,20 +131,20 @@ describe('POST /api/reservations', () => {
     const date = futureDateIso();
 
     const tooEarly = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date, time: '10:30' }));
     expect(tooEarly.status).toBe(400);
     expect(tooEarly.body).toMatchObject({ error: { code: 'OUTSIDE_SERVICE_HOURS' } });
 
     const tooLate = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date, time: '21:00' }));
     expect(tooLate.status).toBe(400);
     expect(tooLate.body).toMatchObject({ error: { code: 'OUTSIDE_SERVICE_HOURS' } });
 
     // The last legal start time must still work.
     const lastSlot = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date, time: '20:30' }));
     expect(lastSlot.status).toBe(201);
   });
@@ -152,7 +153,7 @@ describe('POST /api/reservations', () => {
     await seedTables([4]);
 
     const pastDate = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date: pastDateIso(), time: '19:00' }));
 
     expect(pastDate.status).toBe(400);
@@ -165,7 +166,7 @@ describe('POST /api/reservations', () => {
     await seedTables([2, 4]);
 
     const response = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date: futureDateIso(), partySize: 10 }));
 
     expect(response.status).toBe(409);
@@ -179,7 +180,7 @@ describe('POST /api/reservations', () => {
     await seedTables([2, 4, 8]);
 
     const response = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date: futureDateIso(), partySize: 12 }));
 
     expect(response.status).toBe(409);
@@ -193,7 +194,7 @@ describe('POST /api/reservations', () => {
     await Table.updateMany({}, { $set: { active: false } });
 
     const response = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date: futureDateIso(), partySize: 2 }));
 
     expect(response.status).toBe(409);
@@ -211,7 +212,7 @@ describe('POST /api/reservations', () => {
     const labels: string[] = [];
     for (let attempt = 0; attempt < 6; attempt += 1) {
       const response = await request(app)
-        .post('/api/reservations')
+        .post('/api/reservations').set('Authorization', staffAuthorization())
         .send(reservationBody({ date, time: '12:00', partySize: 1 }));
       expect(response.status).toBe(201);
       labels.push((response.body as CreatedPayload).table.label);
@@ -221,7 +222,7 @@ describe('POST /api/reservations', () => {
     expect(await TableSlot.countDocuments({})).toBe(18);
 
     const overflow = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date, time: '12:00', partySize: 1 }));
     expect(overflow.status).toBe(409);
     expect(overflow.body).toMatchObject({ error: { code: 'BOOKING_CONFLICT' } });
@@ -241,10 +242,10 @@ describe('POST /api/reservations', () => {
     const date = futureDateIso();
     const body = reservationBody({ date, time: '19:00', partySize: 2 });
 
-    const first = await request(app).post('/api/reservations').send(body);
+    const first = await request(app).post('/api/reservations').set('Authorization', staffAuthorization()).send(body);
     expect(first.status).toBe(201);
 
-    const second = await request(app).post('/api/reservations').send(body);
+    const second = await request(app).post('/api/reservations').set('Authorization', staffAuthorization()).send(body);
     expect(second.status).toBe(409);
     expect(second.body).toMatchObject({ error: { code: 'BOOKING_CONFLICT' } });
 

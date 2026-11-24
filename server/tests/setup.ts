@@ -8,9 +8,11 @@
  * path means the tests assert against the index the production process actually
  * builds, and the index assertion is exercised on every test run.
  */
+import { initializeStaffSession } from './auth-helper.js';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
-import { afterAll, afterEach, beforeAll } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach } from 'vitest';
+import { ensureAccountIndexes } from '../src/db.js';
 import { ensureSlotIndexes } from '../src/lib/slots.js';
 import { RATE_LIMIT_DISABLED_ENV } from '../src/lib/rate-limit.js';
 
@@ -30,8 +32,11 @@ beforeAll(async () => {
   });
 
   // Make sure the guard index really exists before any write races happen.
+  await ensureAccountIndexes();
   await ensureSlotIndexes();
 });
+
+beforeEach(initializeStaffSession);
 
 afterEach(async () => {
   const collections = await mongoose.connection.db?.collections();

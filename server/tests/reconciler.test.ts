@@ -7,6 +7,7 @@
  * older than the grace period, because until then an in-flight booking looks
  * exactly the same.
  */
+import { staffAuthorization } from './auth-helper.js';
 import mongoose from 'mongoose';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
@@ -81,7 +82,7 @@ describe('reconcileOrphanedSlots', () => {
     const date = futureDateIso();
 
     const response = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date, time: '18:00', partySize: 2 }));
     expect(response.status).toBe(201);
 
@@ -101,7 +102,7 @@ describe('reconcileOrphanedSlots', () => {
     const date = futureDateIso();
 
     const response = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .send(reservationBody({ date, time: '18:00', partySize: 2 }));
     expect(response.status).toBe(201);
     await TableSlot.updateMany({}, { $set: { createdAt: new Date(0) } });

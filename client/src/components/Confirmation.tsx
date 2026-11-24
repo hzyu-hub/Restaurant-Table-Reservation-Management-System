@@ -74,8 +74,7 @@ export default function Confirmation({
       </dl>
 
       <p className="confirmation__note">
-        Please keep this reference for your visit. Call the restaurant if you need
-        to change or cancel.
+        Please keep this reference for your visit.
       </p>
 
       <button type="button" className="primary-button" onClick={onBookAnother}>

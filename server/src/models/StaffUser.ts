@@ -1,6 +1,6 @@
 import { Schema, model, type HydratedDocument, type InferSchemaType } from 'mongoose';
 
-/** Staff accounts. Authentication is Sprint 3; this model only stores the record. */
+/** Shared accounts; retain the collection and model name for existing staff. */
 const staffUserSchema = new Schema(
   {
     username: {
@@ -19,9 +19,12 @@ const staffUserSchema = new Schema(
     role: {
       type: String,
       required: true,
-      enum: ['staff', 'admin'],
+      enum: ['customer', 'staff', 'admin'],
       default: 'staff',
     },
+    name: { type: String, trim: true, default: '' },
+    phone: { type: String, trim: true, default: '' },
+    email: { type: String, trim: true, lowercase: true, default: null },
   },
   { timestamps: true, collection: 'staffUsers' },
 );

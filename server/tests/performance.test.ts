@@ -19,6 +19,7 @@
  * `console.log` prints the measured numbers so `npm test` output carries the
  * evidence, not just a green tick.
  */
+import { staffAuthorization } from './auth-helper.js';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
@@ -71,7 +72,7 @@ describe('GET /api/availability performance', () => {
     for (const time of times) {
       for (let attempt = 0; attempt < 7; attempt += 1) {
         const response = await request(app)
-          .post('/api/reservations')
+          .post('/api/reservations').set('Authorization', staffAuthorization())
           .send(reservationBody({ date, time, partySize: 2 }));
         if (response.status === 201) {
           bookings += 1;

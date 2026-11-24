@@ -8,6 +8,7 @@
  * customer's name, phone and email into the log verbatim, which the PRD
  * Privacy NFR forbids. Malformed JSON also returned 500 instead of 400.
  */
+import { staffAuthorization } from './auth-helper.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
@@ -67,7 +68,7 @@ describe('malformed JSON body', () => {
     ].join('\n');
 
     const response = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .set('Content-Type', 'application/json')
       .send(malformed);
 
@@ -97,7 +98,7 @@ describe('malformed JSON body', () => {
 
     const malformed = `{"customerName": "${SECRET_NAME}", "customerPhone": "${SECRET_PHONE}"`;
     const response = await request(app)
-      .post('/api/reservations')
+      .post('/api/reservations').set('Authorization', staffAuthorization())
       .set('Content-Type', 'application/json')
       .send(malformed);
 
@@ -123,7 +124,7 @@ describe('oversized body', () => {
     const capture = captureErrorLog();
     try {
       const response = await request(app)
-        .post('/api/reservations')
+        .post('/api/reservations').set('Authorization', staffAuthorization())
         .set('Content-Type', 'application/json')
         .send(huge);
 
